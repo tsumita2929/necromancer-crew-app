@@ -12,7 +12,7 @@ button both lead here.
 ## Hard rules
 
 - Never push. Never add or change a remote. Never change git configuration.
-- Work only on a new local branch `necromancer/<dependency>` (lower case, `/` and
+- Work only on a new local branch `resurrect/<dependency>` (lower case, `/` and
   `@` of scoped names replaced by `-`).
 - Stop and ask if the working tree has uncommitted changes.
 - Never run code from the dead package's install scripts. Read it as text.
@@ -20,8 +20,10 @@ button both lead here.
 
 ## Procedure
 
-1. **Check the tree.** `git status --porcelain` must be empty. Note the current
-   branch; this is the base.
+1. **Check the tree.** Run `git rev-parse --is-inside-work-tree`. If it is not a git
+   repository, stop and say so; never run `git init` yourself. Then run
+   `git status --porcelain`: it must be empty. If it is not empty, stop before changing
+   anything, list the changed paths and ask. Note the current branch; this is the base.
 2. **Diagnose.** Call the `diagnose` tool with the dependency (ecosystem and name).
    If the verdict is `alive`, say so and stop. Read the evidence and the advisories
    aloud to the user in one short paragraph.
@@ -31,7 +33,7 @@ button both lead here.
    - `raise`: rebuild the small utility as a modern, dependency-free module the
      project owns, in `src/vendor/<name>` (or the language's equivalent).
    Tell the user which you chose and why. If two are plausible, ask.
-4. **Create the branch.** `git switch -c necromancer/<dependency>`.
+4. **Create the branch.** `git switch -c resurrect/<dependency>`.
 5. **Write the Kiro spec.** Call `resurrection_spec` with the chosen successor.
    Write the three files to `.kiro/specs/migrate-off-<dependency>/`:
    `requirements.md`, `design.md`, `tasks.md`. Then read the repository and make
@@ -62,7 +64,7 @@ button both lead here.
    once more.
 9. **Report.** Give: the branch name, the spec path, the séance result (number of
    generated cases, or the first counterexample), the test suite result, and the
-   exact command the user can run to review: `git diff <base>..necromancer/<dependency>`.
+   exact command the user can run to review: `git diff <base>..resurrect/<dependency>`.
    Remind the user that nothing was pushed.
 
 ## If the séance fails
