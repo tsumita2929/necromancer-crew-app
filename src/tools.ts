@@ -217,7 +217,7 @@ export function createToolServer(deps: ToolDeps): McpServer {
     guard(async () =>
       runNightWatch({
         store,
-        engine: engine.engine,
+        engine: engine.create ? engine.create() : engine.engine,
         engineName: engine.name,
         readManifests,
         now: deps.now,

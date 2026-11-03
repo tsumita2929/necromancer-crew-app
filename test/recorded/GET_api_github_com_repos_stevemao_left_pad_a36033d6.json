@@ -1,0 +1,17 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://api.github.com/repos/stevemao/left-pad"
+ },
+ "status": 200,
+ "body": {
+  "_trimmed": "GitHub payload reduced",
+  "full_name": "left-pad/left-pad",
+  "html_url": "https://github.com/left-pad/left-pad",
+  "archived": true,
+  "disabled": false,
+  "pushed_at": "2019-04-19T14:16:20Z",
+  "stargazers_count": 1303,
+  "default_branch": "master"
+ }
+}

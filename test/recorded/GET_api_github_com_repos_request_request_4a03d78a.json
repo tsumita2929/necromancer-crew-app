@@ -1,0 +1,17 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://api.github.com/repos/request/request"
+ },
+ "status": 200,
+ "body": {
+  "_trimmed": "GitHub payload reduced",
+  "full_name": "request/request",
+  "html_url": "https://github.com/request/request",
+  "archived": false,
+  "disabled": false,
+  "pushed_at": "2024-08-14T00:09:41Z",
+  "stargazers_count": 25483,
+  "default_branch": "master"
+ }
+}

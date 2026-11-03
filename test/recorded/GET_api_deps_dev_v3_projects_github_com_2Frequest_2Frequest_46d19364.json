@@ -1,0 +1,104 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://api.deps.dev/v3/projects/github.com%2Frequest%2Frequest"
+ },
+ "status": 200,
+ "body": {
+  "_trimmed": "Scorecard checks reduced to name, score and reason",
+  "projectKey": {
+   "id": "github.com/request/request"
+  },
+  "openIssuesCount": 145,
+  "starsCount": 25485,
+  "forksCount": 3134,
+  "license": "Apache-2.0",
+  "description": "🏊🏾 Simplified HTTP request client.",
+  "homepage": "",
+  "scorecard": {
+   "date": "2026-08-24T00:00:00Z",
+   "repository": {
+    "name": "github.com/request/request",
+    "commit": "3c0cddc7c8eb60b470e9519da85896ed7ee0081e"
+   },
+   "scorecard": {
+    "version": "v5.5.1-0.20260815060127-d1fab88f5463",
+    "commit": "d1fab88f54636ff366076edfc5c239f97b3c8e66"
+   },
+   "checks": [
+    {
+     "name": "Code-Review",
+     "score": 6,
+     "reason": "Found 19/28 approved changesets -- score normalized to 6"
+    },
+    {
+     "name": "Packaging",
+     "score": -1,
+     "reason": "packaging workflow not detected"
+    },
+    {
+     "name": "Dangerous-Workflow",
+     "score": -1,
+     "reason": "no workflows found"
+    },
+    {
+     "name": "Token-Permissions",
+     "score": -1,
+     "reason": "No tokens found"
+    },
+    {
+     "name": "Maintained",
+     "score": 0,
+     "reason": "0 commit(s) and 0 issue activity found in the last 90 days -- score normalized to 0"
+    },
+    {
+     "name": "Binary-Artifacts",
+     "score": 10,
+     "reason": "no binaries found in the repo"
+    },
+    {
+     "name": "Pinned-Dependencies",
+     "score": -1,
+     "reason": "no dependencies found"
+    },
+    {
+     "name": "CII-Best-Practices",
+     "score": 0,
+     "reason": "no effort to earn an OpenSSF best practices badge detected"
+    },
+    {
+     "name": "Security-Policy",
+     "score": 0,
+     "reason": "security policy file not detected"
+    },
+    {
+     "name": "License",
+     "score": 10,
+     "reason": "license file detected"
+    },
+    {
+     "name": "Fuzzing",
+     "score": 0,
+     "reason": "project is not fuzzed"
+    },
+    {
+     "name": "Signed-Releases",
+     "score": -1,
+     "reason": "no releases found"
+    },
+    {
+     "name": "Branch-Protection",
+     "score": -1,
+     "reason": "internal error: error during branchesHandler.setup: internal error: some github tokens can't read classic branch protection rules: https://github.com/ossf/scorecard-action/blob/main/docs/authentication/fine-grained-auth-token.md"
+    },
+    {
+     "name": "SAST",
+     "score": 0,
+     "reason": "SAST tool is not run on all commits -- score normalized to 0"
+    }
+   ],
+   "overallScore": 3.4,
+   "metadata": []
+  }
+ }
+}

@@ -13,7 +13,7 @@ function defaultDataDir(): string {
 
 async function main(): Promise<void> {
   const dir = process.env.NECROMANCER_DATA_DIR || defaultDataDir();
-  const server = createToolServer({ engine: await selectEngine(), store: new Store(dir) });
+  const server = createToolServer({ engine: selectEngine(), store: new Store(dir) });
   await server.connect(new StdioServerTransport());
   // stdout carries JSON-RPC. Anything for humans goes to stderr.
   console.error(`necromancer MCP server ready (data: ${dir})`);

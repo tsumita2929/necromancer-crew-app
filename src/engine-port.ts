@@ -1,37 +1,36 @@
-import type { Engine, FetchLike } from '@necromancer/engine';
+import type { Engine } from '@necromancer/engine';
+import { createRealEngine } from './real-engine';
 import { createStubEngine } from './stub-engine';
 
 /** The engine the tools talk to, and which implementation it is. */
 export interface EnginePort {
   name: 'stub' | 'engine';
   engine: Engine;
-  /** Set when the real engine was asked for and could not be loaded. */
+  /** Set when the real engine was wanted and could not be created. */
   note?: string;
+  /**
+   * Makes a new engine of the same kind. The real engine caches every answer for the
+   * life of one instance, so Night Watch takes a fresh one for each run; otherwise a
+   * long-lived server would compare tonight's scan with last night's cached answers.
+   */
+  create?: () => Engine;
 }
 
 /**
- * Picks the engine. The stub is the default. `NECROMANCER_ENGINE=real` asks for
- * `createEngine` from `@necromancer/engine`; if that cannot be loaded the stub is
- * used and the reason is reported, so a tool answer never claims more than it is.
- * The package is imported through a variable so the bundle never contains it.
+ * Picks the engine. The real engine is the default. `NECROMANCER_ENGINE=stub`
+ * asks for the stub. If the real engine cannot be created, the stub is used and
+ * the cause is reported, so an answer never claims more than it is.
+ * `factory` exists so a test can simulate a load failure.
  */
-export async function selectEngine(
+export function selectEngine(
   env: Record<string, string | undefined> = process.env,
-): Promise<EnginePort> {
-  if (env.NECROMANCER_ENGINE !== 'real') {
+  factory: () => Engine = () => createRealEngine(),
+): EnginePort {
+  if (env.NECROMANCER_ENGINE === 'stub') {
     return { name: 'stub', engine: createStubEngine() };
   }
   try {
-    // "/node" is the engine's compiled entry; the bare name points at TypeScript
-    // source, which Node cannot load.
-    const specifier = '@necromancer/engine/node';
-    const mod = (await import(specifier)) as {
-      createEngine?: (o: { fetch: FetchLike }) => Engine;
-    };
-    if (typeof mod.createEngine !== 'function') {
-      throw new Error('@necromancer/engine does not export createEngine yet');
-    }
-    return { name: 'engine', engine: mod.createEngine({ fetch: globalThis.fetch as FetchLike }) };
+    return { name: 'engine', engine: factory(), create: factory };
   } catch (err) {
     return {
       name: 'stub',

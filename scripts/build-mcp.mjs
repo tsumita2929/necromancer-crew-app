@@ -1,5 +1,5 @@
 // Bundles the MCP server into one file, dist/server.mjs, so the installed app
-// needs no node_modules. The real engine is never bundled (it is loaded by name).
+// needs no node_modules. The real engine is bundled in too (src/real-engine.ts).
 import { build } from 'esbuild';
 
 await build({
@@ -9,7 +9,6 @@ await build({
   platform: 'node',
   target: 'node22',
   format: 'esm',
-  external: ['@necromancer/engine'],
   banner: {
     js: "import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);",
   },

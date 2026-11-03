@@ -13,7 +13,8 @@ const data = mkdtempSync(path.join(tmpdir(), 'necromancer-smoke-'));
 const transport = new StdioClientTransport({
   command: 'python3',
   args: [path.join(root, 'mcp', 'launch.py')],
-  env: { ...process.env, NECROMANCER_DATA_DIR: data },
+  // Plumbing check, offline by default. `SMOKE_ENGINE=real npm run smoke` uses the live engine.
+  env: { ...process.env, NECROMANCER_DATA_DIR: data, NECROMANCER_ENGINE: process.env.SMOKE_ENGINE === 'real' ? 'real' : 'stub' },
   stderr: 'pipe',
 });
 const client = new Client({ name: 'smoke', version: '0.0.0' });

@@ -1,0 +1,104 @@
+{
+ "request": {
+  "method": "GET",
+  "url": "https://api.deps.dev/v3/projects/github.com%2Fstevemao%2Fleft-pad"
+ },
+ "status": 200,
+ "body": {
+  "_trimmed": "Scorecard checks reduced to name, score and reason",
+  "projectKey": {
+   "id": "github.com/stevemao/left-pad"
+  },
+  "openIssuesCount": 10,
+  "starsCount": 1303,
+  "forksCount": 138,
+  "license": "MIT",
+  "description": ":arrow_left: String left pad -- deprecated, use String​.prototype​.pad​Start()",
+  "homepage": "",
+  "scorecard": {
+   "date": "2026-08-24T00:00:00Z",
+   "repository": {
+    "name": "github.com/stevemao/left-pad",
+    "commit": "2fca6157fcca165438e0f9495cf0e5a4e6f71349"
+   },
+   "scorecard": {
+    "version": "v5.5.1-0.20260815060127-d1fab88f5463",
+    "commit": "d1fab88f54636ff366076edfc5c239f97b3c8e66"
+   },
+   "checks": [
+    {
+     "name": "Dangerous-Workflow",
+     "score": -1,
+     "reason": "no workflows found"
+    },
+    {
+     "name": "Packaging",
+     "score": -1,
+     "reason": "packaging workflow not detected"
+    },
+    {
+     "name": "Token-Permissions",
+     "score": -1,
+     "reason": "No tokens found"
+    },
+    {
+     "name": "Code-Review",
+     "score": 6,
+     "reason": "Found 12/19 approved changesets -- score normalized to 6"
+    },
+    {
+     "name": "Maintained",
+     "score": 0,
+     "reason": "project is archived"
+    },
+    {
+     "name": "Pinned-Dependencies",
+     "score": -1,
+     "reason": "no dependencies found"
+    },
+    {
+     "name": "Binary-Artifacts",
+     "score": 10,
+     "reason": "no binaries found in the repo"
+    },
+    {
+     "name": "CII-Best-Practices",
+     "score": 0,
+     "reason": "no effort to earn an OpenSSF best practices badge detected"
+    },
+    {
+     "name": "Security-Policy",
+     "score": 0,
+     "reason": "security policy file not detected"
+    },
+    {
+     "name": "Fuzzing",
+     "score": 10,
+     "reason": "project is fuzzed"
+    },
+    {
+     "name": "License",
+     "score": 10,
+     "reason": "license file detected"
+    },
+    {
+     "name": "Signed-Releases",
+     "score": -1,
+     "reason": "no releases found"
+    },
+    {
+     "name": "Branch-Protection",
+     "score": 0,
+     "reason": "branch protection not enabled on development/release branches"
+    },
+    {
+     "name": "SAST",
+     "score": 0,
+     "reason": "SAST tool is not run on all commits -- score normalized to 0"
+    }
+   ],
+   "overallScore": 3.9,
+   "metadata": []
+  }
+ }
+}
