@@ -1,0 +1,32 @@
+{
+  "name": "@necromancer/crew-app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "Necromancer Kiro Crew app: Graveyard page, Night Watch job, agent, skill and MCP server.",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build:mcp": "node scripts/build-mcp.mjs",
+    "build:ui": "npm --prefix ui run build",
+    "build": "npm run build:mcp && npm run build:ui",
+    "smoke": "node scripts/smoke.mjs",
+    "check": "npm run typecheck && npm test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@necromancer/engine": "file:../../packages/engine",
+    "@types/node": "^22.10.0",
+    "esbuild": "^0.28.2",
+    "fast-check": "^4.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^5.1.0"
+  }
+}
