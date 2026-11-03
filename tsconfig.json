@@ -10,8 +10,35 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "noEmit": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ],
+    "jsx": "react-jsx",
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@kirocrew/app-sdk/ui": [
+        "./test/stubs/sdk-ui.tsx"
+      ],
+      "@kirocrew/app-sdk": [
+        "./test/stubs/sdk.ts"
+      ]
+    }
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.mjs"],
-  "exclude": ["node_modules", "dist", "ui"]
+  "include": [
+    "src/**/*.ts",
+    "ui/src/**/*.tsx",
+    "test/**/*.ts",
+    "test/**/*.tsx",
+    "scripts/**/*.mjs"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "ui"
+  ]
 }

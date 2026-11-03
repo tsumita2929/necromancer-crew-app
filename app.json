@@ -1,0 +1,87 @@
+{
+  "name": "necromancer",
+  "version": "0.1.0",
+  "displayName": "Necromancer",
+  "description": "Find the dead in your dependency tree and raise your code on living ones. Night Watch re-checks your projects every night and wakes you when a dependency gets worse.",
+  "author": "necromancer",
+  "license": "MIT",
+  "iconPath": "assets/icon.png",
+  "tags": [
+    "dependencies",
+    "security",
+    "maintenance",
+    "npm",
+    "pypi"
+  ],
+  "highlights": [
+    "Graveyard page: every watched project and its dead dependencies, with an epitaph and a way out.",
+    "Night Watch: a nightly job that notifies only when a dependency's verdict gets worse.",
+    "Necromancer agent: writes the Kiro spec and a differential property-based test, then migrates on a local branch. It never pushes.",
+    "MCP server: autopsy, diagnose, successors and resurrection_spec for any Kiro agent."
+  ],
+  "useCases": [
+    "Keep an eye on the dependencies of the repositories you maintain.",
+    "Get a migration branch ready before an unmaintained package becomes an incident."
+  ],
+  "configuration": [
+    "Ask the Necromancer agent: \"Watch /path/to/project\" to add a project to Night Watch.",
+    "Night Watch runs daily at 03:00 Asia/Tokyo. Change the time on the Schedule page."
+  ],
+  "agents": [
+    "agents/necromancer.json"
+  ],
+  "skills": [
+    "skills/resurrection"
+  ],
+  "mcpServers": {
+    "necromancer": {
+      "command": "python3",
+      "args": [
+        "mcp/launch.py"
+      ],
+      "autoApprove": [
+        "autopsy",
+        "diagnose",
+        "successors",
+        "resurrection_spec",
+        "watch_add",
+        "watch_list",
+        "nightwatch_run",
+        "graveyard"
+      ]
+    }
+  },
+  "backend": {
+    "entryPoint": "backend/server.py",
+    "port": "auto",
+    "healthCheck": "/health"
+  },
+  "ui": {
+    "entry": "dist/index.mjs",
+    "pages": [
+      {
+        "route": "/apps/necromancer",
+        "label": "Graveyard",
+        "icon": "Skull"
+      }
+    ]
+  },
+  "crons": [
+    {
+      "name": "night-watch",
+      "cron_expr": "0 3 * * *",
+      "timezone": "Asia/Tokyo",
+      "agent": "necromancer",
+      "message": "Run Night Watch. Call the nightwatch_run tool once. For every item in its `notifications` list, call send_notification with that item's title and body, priority \"default\", url \"/apps/necromancer\" and group_key \"necromancer-night-watch\". If `notifications` is empty, send nothing and reply with the single word: quiet. Never push, never edit any repository.",
+      "silent": true,
+      "persistent_session": false,
+      "timeout_secs": 900
+    }
+  ],
+  "permissions": {
+    "api": [
+      "/apps/necromancer/api"
+    ],
+    "cron": true
+  }
+}

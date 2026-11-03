@@ -1,0 +1,205 @@
+import type { ReactNode } from 'react';
+import { useState } from 'react';
+import { Badge, Card, CardTitle, StatCard } from '@kirocrew/app-sdk/ui';
+import type { Graveyard, GraveyardProject, Tombstone } from '../../src/graveyard';
+import { VERDICT_MARK, VERDICT_ORDER } from '../../src/verdict';
+import type { Verdict } from '@necromancer/engine';
+
+type BadgeVariant = 'ok' | 'err' | 'warn' | 'aim' | 'muted';
+
+/** Colour is a second channel only: every verdict also carries a symbol and a word (R2.3). */
+const VARIANT: Record<Verdict, BadgeVariant> = {
+  alive: 'ok',
+  dying: 'warn',
+  dead: 'err',
+  ghost: 'muted',
+  zombie: 'err',
+};
+
+const STYLE = `
+.necro-fade { animation: necro-in .35s ease-out both; }
+@keyframes necro-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .necro-fade { animation: none; } }
+.necro-btn { border: 1px solid var(--border, #444); border-radius: 9999px; padding: 4px 12px; font-size: 12px;
+  background: transparent; color: inherit; cursor: pointer; }
+.necro-btn:hover:not(:disabled) { background: var(--bg-hover, rgba(127,127,127,.15)); }
+.necro-btn:disabled { opacity: .5; cursor: default; }
+.necro-btn:focus-visible, .necro-head:focus-visible { outline: 2px solid var(--accent, #7c3aed); outline-offset: 2px; }
+.necro-head { all: unset; box-sizing: border-box; width: 100%; cursor: pointer; display: block; }
+`;
+
+export function VerdictBadge({ verdict }: { verdict: Verdict }) {
+  const mark = VERDICT_MARK[verdict];
+  return (
+    <Badge variant={VARIANT[verdict]} title={`Verdict: ${mark.label}`}>
+      <span aria-hidden="true">{mark.symbol}</span>
+      <span>{mark.label}</span>
+    </Badge>
+  );
+}
+
+function when(iso?: string): string {
+  if (!iso) return 'never scanned';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? 'unknown time' : d.toLocaleString();
+}
+
+function TombstoneRow({
+  t,
+  onRaise,
+}: {
+  t: Tombstone;
+  onRaise: (t: Tombstone) => void;
+}) {
+  return (
+    <li className="necro-fade py-3 border-t border-border first:border-t-0" data-testid="tombstone">
+      <div className="flex flex-wrap items-center gap-2">
+        <VerdictBadge verdict={t.verdict} />
+        <span className="font-mono text-sm font-semibold">{t.name}</span>
+        {t.spec && <span className="font-mono text-xs text-muted">{t.spec}</span>}
+        <span className="text-xs text-muted">{t.ecosystem}</span>
+        <span className="flex-1" />
+        <button
+          type="button"
+          className="necro-btn"
+          onClick={() => onRaise(t)}
+          aria-label={`Raise the dead: ${t.name}. Opens a chat draft with the Necromancer agent.`}
+        >
+          Raise the dead
+        </button>
+      </div>
+      <p className="text-sm mt-1.5 italic">&ldquo;{t.epitaph}&rdquo;</p>
+      {t.advisories.length > 0 && (
+        <p className="text-xs text-muted mt-1">Known advisories: {t.advisories.join(', ')}</p>
+      )}
+      {t.successor ? (
+        <p className="text-xs text-muted mt-1">
+          Way out: <span className="font-mono">{t.successor.name}</span> ({t.successor.kind}). {t.successor.reason}
+        </p>
+      ) : (
+        <p className="text-xs text-muted mt-1">No successor is known.</p>
+      )}
+    </li>
+  );
+}
+
+function ProjectCard({
+  p,
+  startOpen,
+  onRaise,
+}: {
+  p: GraveyardProject;
+  startOpen: boolean;
+  onRaise: (p: GraveyardProject, t: Tombstone) => void;
+}) {
+  const [open, setOpen] = useState(startOpen);
+  const panelId = `necro-panel-${p.id}`;
+  return (
+    <Card className="mb-3" data-testid="project">
+      <button
+        type="button"
+        className="necro-head"
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={() => setOpen(!open)}
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <span aria-hidden="true">{open ? '▾' : '▸'}</span>
+          <CardTitle className="font-mono !m-0 break-all">{p.path}</CardTitle>
+          <span className="flex-1" />
+          {VERDICT_ORDER.filter((v) => p.counts[v] > 0).map((v) => (
+            <span key={v} className="inline-flex items-center gap-1">
+              <VerdictBadge verdict={v} />
+              <span className="font-mono text-xs" aria-label={`${p.counts[v]} ${v}`}>
+                {p.counts[v]}
+              </span>
+            </span>
+          ))}
+        </div>
+        <div className="text-xs text-muted mt-1">
+          Last scan: {when(p.lastScanAt)}
+          {p.baselineOnly && p.status === 'ok' ? ' · waiting for the first Night Watch run' : ''}
+        </div>
+      </button>
+      <div id={panelId} hidden={!open}>
+        {p.status !== 'ok' && (
+          <p className="text-sm mt-2" role="status">
+            <Badge variant="warn">{p.status === 'missing' ? 'Missing' : 'Error'}</Badge>{' '}
+            {p.message ?? 'This project could not be scanned.'}
+          </p>
+        )}
+        {p.unavailable.length > 0 && (
+          <p className="text-xs text-muted mt-2" role="status">
+            Partial scan: could not reach {p.unavailable.join(', ')}. Verdicts may be milder than the truth.
+          </p>
+        )}
+        {p.tombstones.length === 0 ? (
+          <p className="text-sm mt-2">
+            <span aria-hidden="true">✓ </span>No dead dependencies here.
+          </p>
+        ) : (
+          <ul className="mt-2 list-none p-0">
+            {p.tombstones.map((t) => (
+              <TombstoneRow key={t.key} t={t} onRaise={(tomb) => onRaise(p, tomb)} />
+            ))}
+          </ul>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+export interface GraveyardViewProps {
+  graveyard: Graveyard;
+  demo: boolean;
+  loading?: boolean;
+  /** Plain-English reason the real data could not be shown. */
+  error?: string | null;
+  onRaise: (p: GraveyardProject, t: Tombstone) => void;
+  onAskToWatch: () => void;
+}
+
+export function GraveyardView({ graveyard, demo, loading, error, onRaise, onAskToWatch }: GraveyardViewProps) {
+  const banner: ReactNode = (
+    <>
+      {error && (
+        <div role="alert" className="mb-3 p-3 rounded border border-border text-sm" data-testid="error">
+          Could not load your graveyard: {error}. Showing the demo graveyard below.
+        </div>
+      )}
+      {demo && (
+        <div className="mb-3 p-3 rounded border border-border text-sm" role="note" data-testid="demo-banner">
+          <strong>Demo data.</strong> {error ? '' : 'Nothing is watched yet. '}These projects are examples, not yours.
+          Ask the Necromancer agent to watch a project and Night Watch will fill this page.{' '}
+          <button type="button" className="necro-btn ml-1" onClick={onAskToWatch}>
+            Ask the Necromancer to watch a project
+          </button>
+        </div>
+      )}
+    </>
+  );
+
+  return (
+    <div className="px-4 md:px-6 pb-8 overflow-y-auto flex-1 min-h-0">
+      <style>{STYLE}</style>
+      {banner}
+      <div
+        className="grid gap-3.5 grid-cols-[repeat(auto-fit,minmax(130px,1fr))] mb-6"
+        role="group"
+        aria-label="Totals by verdict"
+      >
+        {VERDICT_ORDER.map((v) => (
+          <StatCard
+            key={v}
+            label={`${VERDICT_MARK[v].symbol} ${VERDICT_MARK[v].label}`}
+            value={loading ? '…' : graveyard.totals[v]}
+            accent={v === 'zombie' || v === 'dead'}
+          />
+        ))}
+      </div>
+      {graveyard.projects.map((p, i) => (
+        <ProjectCard key={p.id} p={p} startOpen={i === 0} onRaise={onRaise} />
+      ))}
+    </div>
+  );
+}
