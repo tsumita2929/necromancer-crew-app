@@ -22,7 +22,9 @@ export async function selectEngine(
     return { name: 'stub', engine: createStubEngine() };
   }
   try {
-    const specifier = '@necromancer/engine';
+    // "/node" is the engine's compiled entry; the bare name points at TypeScript
+    // source, which Node cannot load.
+    const specifier = '@necromancer/engine/node';
     const mod = (await import(specifier)) as {
       createEngine?: (o: { fetch: FetchLike }) => Engine;
     };
