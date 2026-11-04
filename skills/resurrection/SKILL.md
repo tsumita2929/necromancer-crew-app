@@ -124,6 +124,8 @@ Each answer says which engine produced it and, for a non-alive dependency, `basi
      add one argument list by hand and say so. When an argument is a variable (an option the caller passes), use the values the
      project's own tests and call sites give it, and say in a comment above the list that only those values are replayed.
      If you cannot name any value for a call, leave it out and say in the report that it is not replayed.
+   - `files`: each file has a `role`. **Find the replacement and the test by `role`, not by name**, because the
+     bundles differ (table "The bundle's files" below).
    Then:
    1. Run each command in `install` (it adds the test tooling as dev dependencies; say so in the
       report) and then `run`. Copy the result line (tests passed, runs). Read the answer's `notes`: the
@@ -135,12 +137,25 @@ Each answer says which engine produced it and, for a non-alive dependency, `basi
       report as it is. Do not run `npm audit fix`, and do not change `engines` in `package.json` (Vitest needs Node
       22.12 or newer; say so if the project allows older Node).
    2. Commit the generated files on the branch: `Add séance for <dependency>`.
-   3. **Prove it can fail.** Replace the body of the function in the generated `seance/<name>/replacement.mjs` with the naive
+   3. **Prove it can fail.** Replace the body of the function in the file whose `role` is `replacement` with the naive
       swap the bundle describes (for example `String(str).padStart(len, ch)`), run again, and copy the
       shrunk counterexample that the séance prints. Then restore the file with
       `git checkout -- <file>` and run once more to see it pass. The counterexample is the evidence
       for the user that the plain swap would have changed behaviour.
    Do not write a comparison by hand where the bundle already has one.
+
+   **The bundle's files** (from the answer's `files[].role`; JavaScript bundles; a Python bundle has `test_seance_<name>.py` and
+   `<name>_replacement.py` and follows the same ideas with pytest):
+
+   | Bundle | `test` | `replacement` | `helper` | Generators |
+   |---|---|---|---|---|
+   | curated, a function of its arguments (`left-pad`) | `seance/<name>/seance.test.mjs` | `seance/<name>/replacement.mjs`, a named export | none | top-level `const`s under the comment `// Generators` (here `str`, `len`, `fill`, and `oldBug`) |
+   | curated, **raise** (`is-odd`: no maintained successor) | `seance/<name>/seance.test.mjs` | **`src/vendor/<name>.mjs`**, already where the project will own it; the séance imports it from there; there is **no** `replacement.mjs` | none | top-level `const`s without that comment (here `strangeNumbers`, `strange`, `value`) |
+   | curated, other shapes (`querystring`, `mkdirp`) | `seance/<name>/seance.test.mjs` | `seance/<name>/replacement.mjs` | none | several top-level `const`s, some under `// Generators.`; they load the old package themselves (`createRequire` or `import * as`) |
+   | generic (`template: "generic"`) | `seance/<name>/seance.test.mjs`, imports `OLD` and `NEW` as namespaces | `seance/<name>/replacement.mjs` with `READY` and `members` | `seance/<name>/seance-guard.mjs` (leave it alone) | none at the top: each member's generator is the `fc.tuple(...)` inside its `describe`, where the `TODO(necromancer)` marker is |
+
+   In every JavaScript bundle, **the generators are the top-level definitions between the last `import` line and the first
+   `describe(` line** of the test file (in the generic bundle, the member's `fc.tuple(...)`), whatever the comments say.
 7. **Decide, then migrate.** The bundle's replacement keeps the old package's answers. You may adopt
    it, or accept the successor's behaviour for a listed difference, but then say so explicitly:
    record the decision in `design.md` under "Known behavioural differences" and keep a test that
@@ -153,28 +168,40 @@ Each answer says which engine produced it and, for a non-alive dependency, `basi
      `String.prototype.padStart`). If you adopt the replacement instead, edit that requirement to say that the code calls the
      project-owned module (`src/vendor/<name>.js`), and add a paragraph "Departure from the generated spec" to `design.md`
      that names the requirement, what it said, what you did instead, and why (the séance's `knownDifferences`). Search all three spec files for the successor's name (for
-     `String.prototype.padStart`, every `padStart`) and for `replacement.mjs`, and bring each sentence in line with what the code does
+     `String.prototype.padStart`, every `padStart`) and for the replacement file's name (`replacement.mjs` or `src/vendor/<name>.mjs`), and bring each sentence in line with what the code does
      (the "Why" line, user stories, other requirements, the design's approach and file list, task wording); list the requirement
-     numbers you changed in the "Departure" paragraph. A spec that contradicts the code is a defect. A native migration still puts its module in `src/vendor/<name>` when you adopt the replacement.
-   - Put the replacement where the project's code can import it (`src/vendor/<name>.js` or the language's equivalent) and
-     make the séance test **that** file. The only edits you may make to `seance/<name>/seance.test.mjs` are:
-     (a) the `import` lines of the old package and of the replacement, and (b) the line that opens the main `describe`,
-     when step 8 makes it skip. Never touch the generators, the comparisons, `numRuns` or the `projectCalls`
-     (except to add examples, step 6). The bundle's `replacement.mjs` exports a named function
-     (`export function leftPad`). Match the project's module system:
-       - ES module project (`"type": "module"`): write `export function leftPad(...)` in `src/vendor/<name>.js`; the
-         séance import line becomes `import { leftPad } from '../../src/vendor/<name>.js';`
-       - CommonJS project: write `module.exports = leftPad; module.exports.leftPad = leftPad;` in `src/vendor/<name>.js`.
-         A default import of a CommonJS file gives `module.exports`, which is the **function**, not an object with
-         `leftPad`. So the one import line `import { leftPad } from './replacement.mjs';` becomes two lines:
-         `import mod from '../../src/vendor/<name>.js';` and `const leftPad = mod.leftPad;`
-     Then delete the stale `seance/<name>/replacement.mjs` (`git rm`) and fix the one sentence of
-     `seance/<name>/README.md` that names it. The generated spec may name a `.ts` path; use the project's own
-     language and say so in `design.md`.
+     numbers you changed in the "Departure" paragraph. A spec that contradicts the code is a defect. A native migration still puts its module in `src/vendor/<name>` when you adopt the replacement. The same paragraph also records any change of file name or module format you make below.
+   - Put the replacement where the project's code can import it and make the séance test **that** file. The only edits you
+     may make to `seance/<name>/seance.test.mjs` are: (a) the `import` lines of the old package and of the replacement,
+     (b) the line that opens the main `describe`, when step 8 makes it skip, and (c) a comment that names a file you renamed (the
+     header comment of the `is-odd` séance names `src/vendor/is-odd.mjs`). Never touch the generators, the comparisons,
+     `numRuns` or the `projectCalls` (except to add examples, step 6). First decide the module format from the project: it is
+     **CommonJS** when `package.json` has no `"type": "module"` and its source files use `require`; it is an **ES module** project
+     when `"type": "module"` is set or the source files use `import`. Then, by bundle:
+       - **`replacement.mjs` bundles** (`left-pad`, `querystring`, `mkdirp`): the bundle's file exports a named function
+         (`export function leftPad`). Copy it to `src/vendor/<name>.js` in the project's format and repoint the séance, then
+         delete the stale `seance/<name>/replacement.mjs` (`git rm`) and fix the one sentence of `seance/<name>/README.md` that names it.
+           - ES module project: keep `export function leftPad(...)`; the séance import line becomes
+             `import { leftPad } from '../../src/vendor/<name>.js';`
+           - CommonJS project: write `module.exports = leftPad; module.exports.leftPad = leftPad;`. A default import of a CommonJS
+             file gives `module.exports`, which is the **function**, not an object with `leftPad`. So the one import line
+             `import { leftPad } from './replacement.mjs';` becomes two lines: `import mod from '../../src/vendor/<name>.js';` and
+             `const leftPad = mod.leftPad;`
+       - **raise bundles** (`is-odd`): the module is already `src/vendor/<name>.mjs` and the séance already imports it; nothing moves.
+         It is an ES module. In an ES-module project keep it as it is. In a **CommonJS** project do not `require` an `.mjs` file (it
+         fails on Node 18 to 22.11, and the project may support those): write the same function as `src/vendor/<name>.js` in
+         CommonJS (`module.exports = isOdd; module.exports.isOdd = isOdd;`), delete the `.mjs` (`git rm`), and change the séance's
+         replacement import to the two lines above (`import mod from '../../src/vendor/<name>.js';` and `const isOdd = mod.isOdd;`).
+         Fix the header comment (edit (c)) and the file name in `seance/<name>/README.md`, and record the change (the file name
+         and the format) in "Departure from the generated spec".
+       - **generic bundle**: the séance imports `NEW` from `./replacement.mjs` and uses `NEW.READY` and `NEW.members[path]`. Keep
+         that file as a thin adapter over the project-owned module (`import mod from '../../src/vendor/<name>.js';`, then
+         `export const READY = true;` and `export const members = { go: (...a) => mod.go(...a) };`). Do not delete it. The séance file needs no edit.
+     The generated spec may name a `.ts` path; use the project's own language and say so in `design.md`.
    - For each task in `tasks.md`: change one module, run the project's tests and the séance, tick the
      task, commit with a short imperative subject (`Replace left-pad with leftPad in src/receipt.js`).
      A sensible order of commits: the spec; the séance; the project-owned module together with the séance's import change and
-     the removal of `replacement.mjs`; the spec's departure edits; the switch in each source file (with its task ticked);
+     the removal of the stale file (`replacement.mjs`, or the `.mjs` you converted); the spec's departure edits; the switch in each source file (with its task ticked);
      the golden guard; the removal of the dependency. Tasks that change no source (the spec, notes, ticking boxes) get a
      small commit of their own. Use the
      repository's own commit identity. Never change git configuration: if the repository has
@@ -186,17 +213,26 @@ Each answer says which engine produced it and, for a non-alive dependency, `basi
    say so. It is three small files next to the séance in `seance/<name>/`, and none of them edits the séance's
    comparisons (templates in "Golden guard templates" at the end):
    - `codec.mjs`: turns `undefined`, `NaN`, `-0`, `Infinity` and holes into JSON and back.
-   - `record.mjs`: **copies** the séance's generators (everything from the `// Generators` comment up to the
-     `// Calls the project makes today` comment of `seance.test.mjs`, word for word; that includes helper functions such as
-     `oldBug`, which the recorder needs; and use the bundle's `knownDifferences` inputs as the `known` list, with a comment "copied from seance.test.mjs; keep in sync")
-     and writes `golden.json` for a fixed seed (a few thousand cases; keep the file under 1 MB). It needs the old
-     package: `npm install --no-save <old>@<version> && node seance/<name>/record.mjs`. Do not move the generators out
-     of the séance and do not import them from it (importing a test file runs its tests).
+   - `record.mjs`: **copies** the séance's generators word for word: everything between the last `import` line and the first
+     `describe(` line of `seance.test.mjs` (that is the generators, and helpers such as `outcome` and `oldBug` that the recorder
+     needs), with a comment "copied from seance.test.mjs; keep in sync". Drop only a copied line that uses the replacement. The
+     `naive` mutant and the `projectCalls` list may stay (use `projectCalls` and the bundle's `knownDifferences` inputs as the
+     `known` list). If a copied line already loads the old package (`querystring` and `mkdirp` do), use it and do not import the
+     package a second time. In a generic bundle, copy the member's `fc.tuple(...)`. The recorder writes `golden.json` for a fixed
+     seed (a few thousand cases; keep the file under 1 MB). Values JSON cannot hold (`bigint`, `Symbol`, functions, objects with
+     `valueOf`) need a tag in `codec.mjs`: extend the codec, and say so in the report. If the séance also runs loops over a range
+     (a window of integers), record those inputs too, or say in the report that the golden file does not cover them. It needs the
+     old package: `npm install --no-save <old>@<version> && node seance/<name>/record.mjs`; if that version is already installed and
+     there is no network, record from the installed copy and say so. Do not move the generators out of the séance and do not
+     import them from it (importing a test file runs its tests). This guard fits a package that is a function of its arguments
+     (`left-pad`, `is-odd`, `querystring`). For a package whose effect is on files or processes (`mkdirp`), record the observable
+     result the séance compares (for `mkdirp`, the folder tree after each call), or keep the old package as a dev dependency and say so.
    - `golden.test.mjs`: replays `golden.json` against the project-owned module. It works without the old package.
    Then make the live comparison skip when the old package is absent (the one allowed edit (b) of step 7): load the old
-   package with a top-level `const old = await import('<old>').then((m) => m.default ?? m, () => null);`, keep the séance's own
-   name for it by adding one line after it (`const leftPadOld = old;`, whatever name the séance uses), and open the
-   main `describe` as `describe.skipIf(!old)(...)`. Do not add a second `package.json` script (step 6 added `seance`).
+   package with a top-level `const old = await import('<old>').then((m) => m.default ?? m, () => null);` in place of its static
+   `import` (or of the `createRequire` load, which throws when the package is absent), keep the séance's own name for it by adding
+   one line after it (`const leftPadOld = old;` or `const isOddOld = old;`, whatever name the séance uses), and open the main
+   `describe` as `describe.skipIf(!old)(...)`. Do not add a second `package.json` script (step 6 added `seance`).
    Say in the report how to run the live comparison again (for example
    `npm install --no-save <old>@<version> && npm run seance`) and what the skipped count means.
 9. **Remove the dead dependency** from the manifest and the lockfile using the project's package manager
@@ -233,7 +269,7 @@ member, the project's own calls as examples. Its comparisons are **skipped** unt
 1. Write the replacement (or choose the successor package and wrap it in the replacement module).
 2. Replace each `TODO(necromancer)` marker: the generator for the real argument type, the normalisation of results.
    Draw every option as widely as the project lets a caller set it (a free string, not one character).
-3. Set `READY` and run. Run old versus old first with the same generators; it must pass.
+3. Fill `members` and set `READY = true` in `seance/<name>/replacement.mjs` (the bundle's `replacement` file), then run. Run old versus old first with the same generators; it must pass.
 4. Prove it can fail with a deliberately wrong replacement, as in step 6.
 5. Treat each counterexample as a real difference (see "If the séance fails"). Say in the report that the comparison
    was written by hand, and list what it does not cover.

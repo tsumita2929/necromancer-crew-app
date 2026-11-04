@@ -116,7 +116,10 @@ describe('QA-28: a package the registry does not know never reads "alive" in a t
     const g = (await call('graveyard', {})).json;
     const rows = g.projects[0].tombstones;
     const gone = rows.find((t: any) => t.name === 'gone-pkg');
-    expect(gone).toMatchObject({ kind: 'not-found', verdict: 'not-found', engineVerdict: 'alive' });
+    expect(gone).toMatchObject({ kind: 'not-found', verdict: 'not-found', engineVerdict: 'alive', notFound: true });
+    // QA-37b: every other row says notFound: false, so a client can read the field on any row
+    expect(rows.filter((t: any) => t.name !== 'gone-pkg').every((t: any) => t.notFound === false)).toBe(true);
+    expect(rows.every((t: any) => typeof t.notFound === 'boolean')).toBe(true);
     expect(g.projects[0].counts.alive).toBe(1);
     expect(g.notFound).toBe(1);
   });
@@ -168,7 +171,7 @@ describe('QA-31: the resurrection skill closes the open steps', async () => {
   });
 
   it('step 7: the only edits allowed in the séance are the import lines and the describe line', () => {
-    expect(skill).toMatch(/The only edits you may make to `seance\/<name>\/seance\.test\.mjs` are/);
+    expect(skill).toMatch(/The only edits you\s+may make to `seance\/<name>\/seance\.test\.mjs` are/);
     expect(skill).toMatch(/Never touch the generators, the comparisons/);
   });
 
@@ -179,6 +182,7 @@ describe('QA-31: the resurrection skill closes the open steps', async () => {
 
   it('step 8: the recorder copies the generators; nothing moves out of the séance', () => {
     expect(skill).toMatch(/\*\*copies\*\* the séance's generators/);
+    expect(skill).toMatch(/between the last `import` line and the first\s+`describe\(` line/);
     expect(skill).toMatch(/Do not move the generators out/);
     expect(skill).not.toMatch(/using the séance's own generators/);
     expect(skill).toContain('describe.skipIf(!old)');
@@ -231,7 +235,40 @@ describe('QA-31 round two: gaps the fresh agent still found are closed in the te
     expect(skill).toMatch(/A sensible order of commits/);
   });
   it('names the copied region of the recorder and the old-package alias line', () => {
-    expect(skill).toContain('`// Calls the project makes today` comment');
-    expect(skill).toContain('const leftPadOld = old;');
+        expect(skill).toContain('const leftPadOld = old;');
+  });
+});
+
+describe('QA-36: the skill matches every bundle shape', async () => {
+  const { readFileSync } = await import('node:fs');
+  const path = await import('node:path');
+  const skill = readFileSync(path.join(__dirname, '..', 'skills/resurrection/SKILL.md'), 'utf8');
+  it('finds the replacement and the test by role, not by name', () => {
+    expect(skill).toMatch(/Find the replacement and the test by `role`/);
+    expect(skill).toMatch(/whose `role` is `replacement`/);
+  });
+  it('names all four JavaScript shapes and where each replacement lives', () => {
+    expect(skill).toContain('curated, **raise**');
+    expect(skill).toContain('`src/vendor/<name>.mjs`');
+    expect(skill).toMatch(/there is \*\*no\*\* `replacement\.mjs`/);
+    expect(skill).toContain('querystring');
+    expect(skill).toContain('seance-guard.mjs');
+    expect(skill).toContain('`READY` and `members`');
+  });
+  it('says where the generators are even without the comment', () => {
+    expect(skill).toMatch(/the generators are the top-level definitions between the last `import` line and the first\s+`describe\(` line/);
+    expect(skill).toMatch(/strangeNumbers/);
+  });
+  it('says how to treat an .mjs module in a CommonJS project, and a generic bundle', () => {
+    expect(skill).toMatch(/do not `require` an `\.mjs` file/);
+    expect(skill).toContain('const isOdd = mod.isOdd;');
+    expect(skill).toMatch(/thin adapter over the project-owned module/);
+    expect(skill).toMatch(/\(c\) a comment that names a file you renamed/);
+  });
+  it('step 8: tags for values JSON cannot hold, loops over ranges, a recorder from an installed copy, and the loader line for createRequire', () => {
+    expect(skill).toContain('`bigint`, `Symbol`, functions');
+    expect(skill).toMatch(/loops over a range/);
+    expect(skill).toMatch(/record from the installed copy/);
+    expect(skill).toContain('`createRequire` load');
   });
 });

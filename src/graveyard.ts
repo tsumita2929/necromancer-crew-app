@@ -16,6 +16,8 @@ export interface Tombstone {
    *             deprecated or yanked version in use: an upgrade notice, never a death).
    */
   kind: 'verdict' | 'not-found' | 'notice';
+  /** True for a package the registry does not know (the same fact as `kind: 'not-found'`, for a client that reads fields). */
+  notFound: boolean;
   /** First evidence message, or a fallback so the line is never empty. */
   epitaph: string;
   /** One id per vulnerability (the engine merges records that name the same one). */
@@ -91,6 +93,7 @@ function tombstone(d: Diagnosis, kind: Tombstone['kind']): Tombstone {
     spec: d.dependency.spec,
     verdict: d.verdict,
     kind,
+    notFound: kind === 'not-found',
     epitaph,
     advisories: d.advisories,
     advisoryList: list,
