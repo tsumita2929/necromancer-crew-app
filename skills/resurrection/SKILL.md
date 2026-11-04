@@ -38,6 +38,11 @@ button both lead here.
    - `raise`: rebuild the small utility as a modern, dependency-free module the
      project owns, in `src/vendor/<name>` (or the language's equivalent).
    Tell the user which you chose and why. If two are plausible, ask.
+   If `successors` is empty, no way out is known: take the `raise` path. Say so, then call
+   `resurrection_spec` with `ecosystem` and `name` and no `successor` (or `"raise"`); the
+   tool then writes a raise spec. For a `raise` successor the successor name equals the
+   dependency name; name the séance `<dependency> vs the owned module`. A `raise` module
+   must exist before old-versus-new can run, so add it first, unwired, in the séance commit.
    A `native` successor is rarely a bare drop-in. If the séance (step 6) shows a
    difference the project can observe, put a tiny project-owned wrapper (for example
    `src/pad.js`) in front of the platform call, and say so in `design.md`.

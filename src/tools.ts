@@ -153,8 +153,23 @@ export function createToolServer(deps: ToolDeps): McpServer {
         throw new ToolInputError(`${args.name} is alive; there is nothing to resurrect.`);
       }
       const names = d.successors.map((s) => s.name);
-      const chosen =
+      let chosen =
         args.successor === undefined ? d.successors[0] : d.successors.find((s) => s.name === args.successor);
+      // No successor is known: the way out is to raise the package, that is, rebuild it as code
+      // the project owns. Allowed when the caller names nothing, "raise", or the package itself.
+      if (
+        !chosen &&
+        d.successors.length === 0 &&
+        (args.successor === undefined || args.successor === 'raise' || args.successor === args.name)
+      ) {
+        chosen = {
+          name: args.name,
+          ecosystem: args.ecosystem,
+          kind: 'raise',
+          reason: 'No successor is known. Rebuild the small utility as code the project owns.',
+          source: 'curated',
+        };
+      }
       if (!chosen) {
         throw new ToolInputError(
           names.length === 0

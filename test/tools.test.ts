@@ -73,6 +73,34 @@ describe('MCP tools (R5)', () => {
     expect(r.text).toContain('Valid successors: fetch, got.');
   });
 
+  it('live R5.1 a dead dependency with no successor gets a raise spec; naming "raise" or the package works too', async () => {
+    const stub = createStubEngine();
+    const noSuccessor = {
+      ...stub,
+      diagnose: async (deps: Parameters<typeof stub.diagnose>[0]) =>
+        (await stub.diagnose(deps)).map((d) => ({ ...d, verdict: 'dead' as const, successors: [] })),
+    };
+    const server = createToolServer({ engine: { name: 'stub', engine: noSuccessor }, store: new Store(tmp()) });
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: 'test', version: '0.0.0' });
+    await Promise.all([server.connect(a), client.connect(b)]);
+    for (const successor of [undefined, 'raise', 'array-flatten']) {
+      const r = await client.callTool({
+        name: 'resurrection_spec',
+        arguments: { ecosystem: 'npm', name: 'array-flatten', ...(successor ? { successor } : {}) },
+      });
+      expect(r.isError, String(successor)).toBeFalsy();
+      const body = JSON.parse((r.content as Array<{ text: string }>)[0]!.text);
+      expect(body.successor).toMatchObject({ name: 'array-flatten', kind: 'raise' });
+      expect(Object.keys(body.spec)).toEqual(['requirements.md', 'design.md', 'tasks.md']);
+    }
+    const bad = await client.callTool({
+      name: 'resurrection_spec',
+      arguments: { ecosystem: 'npm', name: 'array-flatten', successor: 'lodash' },
+    });
+    expect(bad.isError).toBe(true);
+  });
+
   it('R5.5 resurrection_spec refuses an alive dependency', async () => {
     const { call } = await connect();
     const r = await call('resurrection_spec', { ecosystem: 'npm', name: 'express' });
