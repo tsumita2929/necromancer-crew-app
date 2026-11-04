@@ -39,8 +39,9 @@ def main():
         sys.stderr.write("necromancer: %s is missing; run `npm run bundle` in the app source.\n" % BUNDLE)
         return 1
     os.environ.setdefault("NECROMANCER_DATA_DIR", os.path.join(ROOT, "data"))
-    if os.name == "nt":
-        # execv on Windows starts a new process and ends this one, which drops the stdio pipes.
+    if os.name == "nt" or os.environ.get("NECROMANCER_LAUNCH_SPAWN") == "1":
+        # execv on Windows starts a new process and ends this one, which drops the stdio pipes, so run
+        # Node as a child that inherits stdio. NECROMANCER_LAUNCH_SPAWN=1 forces this path on any system.
         import subprocess
 
         return subprocess.call([node, BUNDLE])
