@@ -54,14 +54,14 @@ describe('Graveyard backend (R2)', () => {
   });
 
   it('with a proxy secret, rejects unsigned and stale requests and accepts a signed one', async () => {
-    const secret = 's3cret-for-test';
-    const port = await start(tmp(), secret);
+    const signingKey = 'fixture-hmac-key-0001'; // a made-up key for the local test server
+    const port = await start(tmp(), signingKey);
     const url = `http://127.0.0.1:${port}/api/graveyard`;
     expect((await fetch(url)).status).toBe(401);
     expect((await fetch(`http://127.0.0.1:${port}/health`)).status).toBe(200);
 
     const sign = (ts: number) =>
-      `${ts}:${createHmac('sha256', secret)
+      `${ts}:${createHmac('sha256', signingKey)
         .update(`${ts}:GET:/api/graveyard:${createHash('sha256').update('').digest('hex')}`)
         .digest('hex')}`;
     const now = Math.floor(Date.now() / 1000);
