@@ -92,9 +92,17 @@ Each answer says which engine produced it and, for a non-alive dependency, `basi
 5. **Write the Kiro spec.** Call `resurrection_spec` with `ecosystem`, `name`, the chosen `successor` and `path`
    (the project directory). It **returns text and writes no file**: the answer's `spec` object holds the three files
    as strings, keyed `requirements.md`, `design.md`, `tasks.md`. Write each one, unchanged to begin with, to
-   `.kiro/specs/migrate-off-<dependency>/<file>` (with a file tool, not by retyping from memory). Then make the spec
+   `.kiro/specs/migrate-off-<dependency>/<file>`. Do not retype them from memory. If your host has no tool that writes
+   a field of a tool answer to a file, save the answer (`... mcp-call.mjs resurrection_spec '<json>' > /tmp/spec.json`) and run
+   `node -e "const fs=require('fs');const s=JSON.parse(fs.readFileSync('/tmp/spec.json','utf8')).spec;fs.mkdirSync('.kiro/specs/migrate-off-<dependency>',{recursive:true});for(const [f,t] of Object.entries(s))fs.writeFileSync('.kiro/specs/migrate-off-<dependency>/'+f,t)"`
+   from the project root. `successor` is the successor's `name` as `successors` lists it (for example
+   `String.prototype.padStart`); leave it out for the best one. `spec` (the version in use) is optional on
+   `resurrection_spec`, `seance` and `seance_write`: with `path` they read it from the project's manifests and lockfile. Then make the spec
    concrete: list the real files and call sites that use the dependency (the answer's `usage` shows what the scan
-   saw; its `warnings` are explained under "Warnings" below). Keep the EARS numbering. Commit it:
+   saw; its `warnings` are explained under "Warnings" below). Put the list in a section "Usage inventory" of `design.md`; if the generated `tasks.md` or `requirements.md` names a file for it
+   (for example `docs/migration/<name>-usage.md`), create that file too. Keep the EARS numbering. Tick a task in `tasks.md` (`[x]`)
+   in the commit that finishes it; a task that only asks for a check (a runtime check, an inventory) is ticked when you have
+   done the check and said what you found. Commit the spec:
    `Add migration spec for <dependency>`.
 6. **Run the generated séance first.** Call `seance_write` with `ecosystem`, `name`, `path`
    (and `acceptLowConfidence: true` only if the person agreed). You are on the `resurrect/<dependency>` branch by now. Read the answer before anything else:
@@ -113,8 +121,9 @@ Each answer says which engine produced it and, for a non-alive dependency, `basi
    - The séance file has a `projectCalls` list built from the scan. The scan only keeps calls whose
      arguments are literals, so it can be empty even when the scan counted calls. For each call site
      whose arguments you can state with certainty (read the call, and the project's tests for the values),
-     add one argument list by hand and say so. If the arguments come from user input or are built at run
-     time, leave the list empty and say in the report that the project's own calls are not replayed.
+     add one argument list by hand and say so. When an argument is a variable (an option the caller passes), use the values the
+     project's own tests and call sites give it, and say in a comment above the list that only those values are replayed.
+     If you cannot name any value for a call, leave it out and say in the report that it is not replayed.
    Then:
    1. Run each command in `install` (it adds the test tooling as dev dependencies; say so in the
       report) and then `run`. Copy the result line (tests passed, runs). Read the answer's `notes`: the
@@ -143,8 +152,10 @@ Each answer says which engine produced it and, for a non-alive dependency, `basi
      successor says (usually in R3.1) that the code SHALL call the successor (for example
      `String.prototype.padStart`). If you adopt the replacement instead, edit that requirement to say that the code calls the
      project-owned module (`src/vendor/<name>.js`), and add a paragraph "Departure from the generated spec" to `design.md`
-     that names the requirement, what it said, what you did instead, and why (the séance's `knownDifferences`). A spec
-     that contradicts the code is a defect. A native migration still puts its module in `src/vendor/<name>` when you adopt the replacement.
+     that names the requirement, what it said, what you did instead, and why (the séance's `knownDifferences`). Search all three spec files for the successor's name (for
+     `String.prototype.padStart`, every `padStart`) and for `replacement.mjs`, and bring each sentence in line with what the code does
+     (the "Why" line, user stories, other requirements, the design's approach and file list, task wording); list the requirement
+     numbers you changed in the "Departure" paragraph. A spec that contradicts the code is a defect. A native migration still puts its module in `src/vendor/<name>` when you adopt the replacement.
    - Put the replacement where the project's code can import it (`src/vendor/<name>.js` or the language's equivalent) and
      make the séance test **that** file. The only edits you may make to `seance/<name>/seance.test.mjs` are:
      (a) the `import` lines of the old package and of the replacement, and (b) the line that opens the main `describe`,
@@ -162,7 +173,10 @@ Each answer says which engine produced it and, for a non-alive dependency, `basi
      language and say so in `design.md`.
    - For each task in `tasks.md`: change one module, run the project's tests and the séance, tick the
      task, commit with a short imperative subject (`Replace left-pad with leftPad in src/receipt.js`).
-     Tasks that change no source (the spec, notes, ticking boxes) get a small commit of their own. Use the
+     A sensible order of commits: the spec; the séance; the project-owned module together with the séance's import change and
+     the removal of `replacement.mjs`; the spec's departure edits; the switch in each source file (with its task ticked);
+     the golden guard; the removal of the dependency. Tasks that change no source (the spec, notes, ticking boxes) get a
+     small commit of their own. Use the
      repository's own commit identity. Never change git configuration: if the repository has
      none, pass the identity for one command with `git -c user.name=... -c user.email=... commit`,
      using `Necromancer (agent)` and `necromancer@agent.invalid`.
@@ -172,14 +186,16 @@ Each answer says which engine produced it and, for a non-alive dependency, `basi
    say so. It is three small files next to the séance in `seance/<name>/`, and none of them edits the séance's
    comparisons (templates in "Golden guard templates" at the end):
    - `codec.mjs`: turns `undefined`, `NaN`, `-0`, `Infinity` and holes into JSON and back.
-   - `record.mjs`: **copies** the séance's generators (the `const` blocks between the line `// Generators` and the
-     `projectCalls` line of `seance.test.mjs`, word for word, with a comment "copied from seance.test.mjs; keep in sync")
+   - `record.mjs`: **copies** the séance's generators (everything from the `// Generators` comment up to the
+     `// Calls the project makes today` comment of `seance.test.mjs`, word for word; that includes helper functions such as
+     `oldBug`, which the recorder needs; and use the bundle's `knownDifferences` inputs as the `known` list, with a comment "copied from seance.test.mjs; keep in sync")
      and writes `golden.json` for a fixed seed (a few thousand cases; keep the file under 1 MB). It needs the old
      package: `npm install --no-save <old>@<version> && node seance/<name>/record.mjs`. Do not move the generators out
      of the séance and do not import them from it (importing a test file runs its tests).
    - `golden.test.mjs`: replays `golden.json` against the project-owned module. It works without the old package.
    Then make the live comparison skip when the old package is absent (the one allowed edit (b) of step 7): load the old
-   package with a top-level `const old = await import('<old>').then((m) => m.default ?? m, () => null);` and open the
+   package with a top-level `const old = await import('<old>').then((m) => m.default ?? m, () => null);`, keep the séance's own
+   name for it by adding one line after it (`const leftPadOld = old;`, whatever name the séance uses), and open the
    main `describe` as `describe.skipIf(!old)(...)`. Do not add a second `package.json` script (step 6 added `seance`).
    Say in the report how to run the live comparison again (for example
    `npm install --no-save <old>@<version> && npm run seance`) and what the skipped count means.

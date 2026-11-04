@@ -214,3 +214,24 @@ describe('QA-31: the resurrection skill closes the open steps', async () => {
     expect(1 in decode(JSON.parse(JSON.stringify(encode(sparse))))).toBe(false);
   });
 });
+
+describe('QA-31 round two: gaps the fresh agent still found are closed in the text', async () => {
+  const { readFileSync } = await import('node:fs');
+  const path = await import('node:path');
+  const skill = readFileSync(path.join(__dirname, '..', 'skills/resurrection/SKILL.md'), 'utf8');
+  it('says how to save the spec JSON to files, what `successor` and `spec` are, and where the inventory goes', () => {
+    expect(skill).toContain('/tmp/spec.json');
+    expect(skill).toMatch(/`successor` is the successor's `name`/);
+    expect(skill).toMatch(/`spec` \(the version in use\) is optional/);
+    expect(skill).toContain('"Usage inventory"');
+  });
+  it('says what to do with variable arguments, every spec sentence naming the successor, and the commit order', () => {
+    expect(skill).toMatch(/use the values the\s+project's own tests and call sites give it/);
+    expect(skill).toMatch(/Search all three spec files for the successor's name/);
+    expect(skill).toMatch(/A sensible order of commits/);
+  });
+  it('names the copied region of the recorder and the old-package alias line', () => {
+    expect(skill).toContain('`// Calls the project makes today` comment');
+    expect(skill).toContain('const leftPadOld = old;');
+  });
+});
