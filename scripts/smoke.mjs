@@ -11,7 +11,7 @@ const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const data = mkdtempSync(path.join(tmpdir(), 'necromancer-smoke-'));
 
 const transport = new StdioClientTransport({
-  command: 'python3',
+  command: process.platform === 'win32' ? 'python' : 'python3',
   args: [path.join(root, 'mcp', 'launch.py')],
   // Plumbing check, offline by default. `SMOKE_ENGINE=real npm run smoke` uses the live engine.
   env: { ...process.env, NECROMANCER_DATA_DIR: data, NECROMANCER_ENGINE: process.env.SMOKE_ENGINE === 'real' ? 'real' : 'stub' },

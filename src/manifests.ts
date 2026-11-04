@@ -33,7 +33,7 @@ export async function readManifests(root: string): Promise<ReadManifests> {
     try {
       entries = await fs.readdir(dir, { withFileTypes: true });
     } catch (err) {
-      problems.push(`${path.relative(root, dir) || '.'}: cannot read directory (${(err as NodeJS.ErrnoException).code ?? 'error'}).`);
+      problems.push(`${path.relative(root, dir).split(path.sep).join('/') || '.'}: cannot read directory (${(err as NodeJS.ErrnoException).code ?? 'error'}).`);
       return;
     }
     entries.sort((a, b) => a.name.localeCompare(b.name));
@@ -47,7 +47,7 @@ export async function readManifests(root: string): Promise<ReadManifests> {
         continue;
       }
       if (!entry.isFile() || !KINDS.includes(entry.name as ManifestKind)) continue;
-      const rel = path.relative(root, full);
+      const rel = path.relative(root, full).split(path.sep).join('/');
       if (files.length >= MAX_FILES) {
         problems.push(`${rel}: skipped, more than ${MAX_FILES} manifests.`);
         continue;

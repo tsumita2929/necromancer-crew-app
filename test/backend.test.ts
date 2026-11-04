@@ -12,7 +12,7 @@ afterEach(() => child?.kill());
 
 async function start(dataDir: string, secret = ''): Promise<number> {
   const port = 20000 + Math.floor(Math.random() * 20000);
-  child = spawn('python3', [server], {
+  child = spawn(process.platform === 'win32' ? 'python' : 'python3', [server], {
     env: { ...process.env, PORT: String(port), NECROMANCER_DATA_DIR: dataDir, KIROCREW_PROXY_SECRET: secret },
     stdio: 'ignore',
   });

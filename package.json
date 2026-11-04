@@ -11,11 +11,12 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "build:mcp": "node scripts/build-mcp.mjs",
-    "build:ui": "npm --prefix ui run build",
-    "build": "npm run build:mcp && npm run build:ui",
     "smoke": "node scripts/smoke.mjs",
-    "check": "npm run typecheck && npm test"
+    "check": "npm run typecheck && npm test",
+    "bundle:mcp": "node scripts/build-mcp.mjs",
+    "bundle:ui": "npm --prefix ui run build",
+    "bundle": "npm run bundle:mcp && npm run bundle:ui",
+    "build": "npm run bundle"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.0",

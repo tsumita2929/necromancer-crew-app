@@ -13,9 +13,10 @@ import { Store } from '../src/store';
 import { createStubEngine } from '../src/stub-engine';
 import { createToolServer } from '../src/tools';
 import { project, tmp } from './helpers';
+import { hauntedApp } from './paths';
 import { recordedAt, recordedFetch } from './recorded-fetch';
 
-const haunted = path.resolve(import.meta.dirname, '../../../demo/haunted-app');
+const haunted = hauntedApp;
 
 /**
  * The haunted app's manifest and lockfile, with the lockfile cut down to the three direct

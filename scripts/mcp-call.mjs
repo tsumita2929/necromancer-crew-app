@@ -17,7 +17,7 @@ if (!tool) {
 }
 
 const transport = new StdioClientTransport({
-  command: 'python3',
+  command: process.platform === 'win32' ? 'python' : 'python3',
   args: [path.join(root, 'mcp', 'launch.py')],
   env: {
     ...process.env,

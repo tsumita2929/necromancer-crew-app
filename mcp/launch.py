@@ -17,8 +17,15 @@ def find_node():
     found = shutil.which("node")
     if found:
         return found
-    for candidate in ("/usr/local/bin/node", "/usr/bin/node", os.path.expanduser("~/.local/bin/node")):
-        if os.access(candidate, os.X_OK):
+    candidates = [
+        "/usr/local/bin/node",
+        "/opt/homebrew/bin/node",
+        "/usr/bin/node",
+        os.path.expanduser("~/.local/bin/node"),
+        os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "nodejs", "node.exe"),
+    ]
+    for candidate in candidates:
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
             return candidate
     return None
 
@@ -29,9 +36,14 @@ def main():
         sys.stderr.write("necromancer: Node.js 22 or later is required but was not found.\n")
         return 1
     if not os.path.isfile(BUNDLE):
-        sys.stderr.write("necromancer: %s is missing; run `npm run build` in the app source.\n" % BUNDLE)
+        sys.stderr.write("necromancer: %s is missing; run `npm run bundle` in the app source.\n" % BUNDLE)
         return 1
     os.environ.setdefault("NECROMANCER_DATA_DIR", os.path.join(ROOT, "data"))
+    if os.name == "nt":
+        # execv on Windows starts a new process and ends this one, which drops the stdio pipes.
+        import subprocess
+
+        return subprocess.call([node, BUNDLE])
     os.execv(node, [node, BUNDLE])
 
 

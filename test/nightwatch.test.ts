@@ -181,7 +181,7 @@ describe('Night Watch end to end with real files and the stub engine', () => {
 });
 
 describe('readManifests', () => {
-  it('R5.6 reads only the four manifest kinds and does not follow symbolic links', async () => {
+  it.skipIf(process.platform === 'win32')('R5.6 reads only the four manifest kinds and does not follow symbolic links', async () => {
     const outside = project({ 'package.json': '{"dependencies":{"secret":"1"}}' });
     const dir = project({
       'package.json': '{}',

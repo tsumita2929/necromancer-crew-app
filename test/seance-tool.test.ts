@@ -11,9 +11,10 @@ import { Store } from '../src/store';
 import { createStubEngine } from '../src/stub-engine';
 import { createToolServer } from '../src/tools';
 import { project, tmp } from './helpers';
+import { hauntedApp } from './paths';
 import { recordedAt, recordedFetch } from './recorded-fetch';
 
-const hauntedSrc = path.resolve(import.meta.dirname, '../../../demo/haunted-app/src');
+const hauntedSrc = path.join(hauntedApp, 'src');
 
 /** The real engine's scan and séance generator; diagnosis is fixed so no network is needed. */
 function engineWith(verdict: Verdict, successors: Successor[]): Engine {
@@ -89,14 +90,43 @@ describe('seance tool (live R-seance)', () => {
     expect(existsSync(path.join(dir, 'seance'))).toBe(false);
   });
 
-  it('the install command does not move the dead dependency to devDependencies, and the notes mention the Vitest and node --test points', async () => {
+  it('the install command never names the old package (so it cannot move to devDependencies), whatever the engine emits; the notes mention the Vitest and node --test points', async () => {
     const call = await connect(engineWith('dead', [PADSTART]));
     const r = await call('seance', { ecosystem: 'npm', name: 'left-pad', path: repoOn('main') });
-    expect(r.json.install).toEqual(['npm install --save-dev vitest fast-check']);
+    // Invariant: no returned install command names the dead package. Older engine output named it and the
+    // tool removed it (with a note); newer engine output no longer names it. Both must satisfy this.
+    expect(r.json.install.length).toBeGreaterThan(0);
+    for (const cmd of r.json.install as string[]) {
+      expect(cmd, cmd).not.toMatch(/(^|[\s@/])left-pad(@|\s|$)/);
+    }
+    expect((r.json.install as string[]).join(' ')).toMatch(/vitest/);
+    expect((r.json.install as string[]).join(' ')).toMatch(/fast-check/);
     const notes = r.json.notes.join(' ');
-    expect(notes).toMatch(/left-pad; it was left out|also names left-pad/);
     expect(notes).toMatch(/Node 22\.12/);
     expect(notes).toMatch(/node --test test\/\*\.test\.js/);
+  });
+
+  it('with older engine output that names the old package in the install line, the tool still never returns it, and says so', async () => {
+    const base = engineWith('dead', [PADSTART]);
+    const older: Engine = {
+      ...base,
+      seance: (d, s, u) => {
+        const bundle = base.seance!(d, s, u);
+        return { ...bundle, install: ['npm install --save-dev vitest fast-check left-pad'] };
+      },
+    };
+    const call = await connect(older);
+    const r = await call('seance', { ecosystem: 'npm', name: 'left-pad', path: repoOn('main') });
+    expect(r.json.install).toEqual(['npm install --save-dev vitest fast-check']);
+    expect(r.json.notes.join(' ')).toMatch(/also names left-pad/);
+  });
+
+  it('cleanInstall (a guard for older engine output) removes the old package and says so, and says nothing when it is absent', () => {
+    const older = cleanInstall(['npm install --save-dev vitest fast-check left-pad'], 'left-pad');
+    expect(older.install).toEqual(['npm install --save-dev vitest fast-check']);
+    expect(older.note).toMatch(/also names left-pad/);
+    const newer = cleanInstall(['npm install --save-dev vitest fast-check'], 'left-pad');
+    expect(newer).toEqual({ install: ['npm install --save-dev vitest fast-check'] });
   });
 
   it('cleanInstall leaves other commands alone', () => {
@@ -210,7 +240,8 @@ describe('seance tool (live R-seance)', () => {
     expect(r.json.usage.warnings.join(' ')).toMatch(/only in test files/);
   });
 
-  it('a project file the scan cannot read is listed, and the rest is still scanned', async () => {
+  // File modes are not enforced for root or on Windows, so this check needs an ordinary POSIX user.
+  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)('a project file the scan cannot read is listed, and the rest is still scanned', async () => {
     const call = await connect(engineWith('dead', [PADSTART]));
     const dir = repoOn('main', {
       'package.json': '{}',
@@ -232,7 +263,7 @@ describe('seance tool (live R-seance)', () => {
     }
   });
 
-  it('symbolic links in the project are not followed by the scan', async () => {
+  it.skipIf(process.platform === 'win32')('symbolic links in the project are not followed by the scan', async () => {
     const call = await connect(engineWith('dead', [PADSTART]));
     const outside = project({ 'evil.js': "const leftPad = require('left-pad');\nleftPad('a', 3);\n" });
     const dir = repoOn('main', { 'package.json': '{}', 'src/a.js': 'module.exports = 1;\n' });
@@ -294,7 +325,7 @@ describe('writeBundle safety', () => {
     expect(existsSync(path.join(dir, 'seance'))).toBe(false);
   });
 
-  it('refuses to write through a symbolic link that points out of the project', async () => {
+  it.skipIf(process.platform === 'win32')('refuses to write through a symbolic link that points out of the project', async () => {
     const dir = repoOn('resurrect/x');
     const outside = tmp();
     symlinkSync(outside, path.join(dir, 'seance'));
