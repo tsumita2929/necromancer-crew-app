@@ -206,7 +206,7 @@ async function scanOne(
     notifications.push({
       kind: 'not-found',
       projectId: watched.id,
-      title: `${name} is no longer found on the registry`,
+      title: `${name} is not found on the registry`,
       body: `${watched.path}: ${NOT_FOUND_TEXT} The previous scan did not report it missing. Look at it before the next install; it is not migrated automatically.`,
     });
   }

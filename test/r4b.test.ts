@@ -414,7 +414,7 @@ describe('Night Watch: notFound', () => {
     await run(store, engine);
     const second = await run(store, engine);
     expect(second.notifications.map((n) => n.kind)).toEqual(['not-found']);
-    expect(second.notifications[0]!.title).toBe('b is no longer found on the registry');
+    expect(second.notifications[0]!.title).toBe('b is not found on the registry');
     expect(second.notifications[0]!.body).toMatch(/removed, private or misspelled/);
     expect(second.projects[0]!.notFound).toBe(1);
     const third = await run(store, engine);
