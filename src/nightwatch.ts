@@ -3,6 +3,7 @@ import type { AutopsyReport, Diagnosis, Engine, SourceId, Verdict } from '@necro
 import type { ReadManifests } from './manifests';
 import type { Snapshot, WatchedProject } from './state';
 import type { Store } from './store';
+import { NOT_FOUND_TEXT } from './advice';
 import { depKey, rank, worse } from './verdict';
 
 export interface Worsened {
@@ -49,7 +50,7 @@ export function snapshotOf(report: AutopsyReport): Snapshot {
 }
 
 export interface Notification {
-  kind: 'worse' | 'project-missing';
+  kind: 'worse' | 'project-missing' | 'not-found';
   projectId: string;
   title: string;
   body: string;
@@ -60,6 +61,8 @@ export interface ProjectResult {
   path: string;
   status: 'scanned' | 'baseline' | 'missing' | 'error';
   worsened: number;
+  /** Dependencies the registry does not know in this scan. They are never counted as alive. */
+  notFound?: number;
   unavailable: SourceId[];
   message?: string;
 }
@@ -181,6 +184,9 @@ async function scanOne(
   }
   const report = await deps.engine.autopsy({ subject: `local:${watched.path}`, files });
   const cur = snapshotOf(report);
+  // A package the registry does not know is not alive: it keeps the verdict it had (alive only if it had none).
+  const notFoundKeys = [...new Set(report.diagnoses.filter((d) => d.notFound).map((d) => depKey(d.dependency)))].sort();
+  for (const k of notFoundKeys) cur[k] = watched.snapshot?.[k] ?? 'alive';
   const partial = report.unavailable.length > 0;
   const worsened = detectWorse(watched.snapshot, cur);
 
@@ -192,6 +198,19 @@ async function scanOne(
   }
   for (const w of worsened) notifications.push(worseNotification(watched, w, byKey.get(w.key)));
 
+  // A dependency that was found at the last scan and is not found now: once, then the list moves on.
+  const before = new Set(watched.notFound ?? []);
+  const newlyNotFound = watched.snapshot === undefined ? [] : notFoundKeys.filter((k) => !before.has(k));
+  for (const k of newlyNotFound) {
+    const name = k.slice(k.indexOf(':') + 1);
+    notifications.push({
+      kind: 'not-found',
+      projectId: watched.id,
+      title: `${name} is no longer found on the registry`,
+      body: `${watched.path}: ${NOT_FOUND_TEXT} The previous scan did not report it missing. Look at it before the next install; it is not migrated automatically.`,
+    });
+  }
+
   const baseline = watched.snapshot === undefined;
   const next = mergeSnapshot(watched.snapshot, cur, partial);
   await deps.store.update((s) => {
@@ -201,6 +220,7 @@ async function scanOne(
     delete p.message;
     p.lastScanAt = now().toISOString();
     p.snapshot = next;
+    p.notFound = notFoundKeys;
     p.report = report;
   });
 
@@ -208,6 +228,7 @@ async function scanOne(
     ...base,
     status: baseline ? 'baseline' : 'scanned',
     worsened: worsened.length,
+    notFound: notFoundKeys.length,
     unavailable: report.unavailable.map((u) => u.source),
   };
 }

@@ -17,6 +17,8 @@ export interface WatchedProject {
   message?: string;
   /** Verdicts stored by the last scan. Absent until the first scan (baseline). */
   snapshot?: Snapshot;
+  /** Dependencies ("npm:name") the registry did not know at the last scan. */
+  notFound?: string[];
   /** The last report, rendered by the Graveyard page. */
   report?: AutopsyReport;
 }

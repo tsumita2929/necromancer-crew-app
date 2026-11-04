@@ -31,7 +31,8 @@ describe('app.json and the build agree (QA-04)', () => {
 
   it('QA-19: tools that write files or watch new projects are not auto-approved', () => {
     const approved: string[] = manifest.mcpServers.necromancer.autoApprove;
-    expect(approved).not.toContain('seance');
+    expect(approved).toContain('seance'); // the preview is read-only
+    expect(approved).not.toContain('seance_write');
     expect(approved).not.toContain('watch_add');
     expect(approved).not.toContain('watch_remove');
   });

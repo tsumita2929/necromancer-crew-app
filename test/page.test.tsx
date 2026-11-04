@@ -53,7 +53,7 @@ describe('Graveyard page (R2)', () => {
     render(<App />);
     await screen.findByTestId('project');
     const totals = screen.getAllByTestId('stat').map((s) => s.textContent);
-    expect(totals).toEqual(['✓ Alive 1', '◐ Dying 0', '✝ Dead 1', '◌ Ghost 0', '☣ Zombie 1']);
+    expect(totals).toEqual(['✓ Alive 1', '◐ Dying 0', '✝ Dead 1', '◌ Ghost 0', '☣ Zombie 1', '? Not found 0']);
   });
 
   it('R2.4 with nothing watched it says so and shows a labelled demo graveyard', async () => {
@@ -189,5 +189,87 @@ describe('basis on the page (item 1)', () => {
     const view = buildGraveyard(state).projects.find((x) => x.id === p.id)!;
     expect(view.tombstones.every((t) => t.basis === undefined)).toBe(true);
     expect(view.heuristicCount).toBe(0);
+  });
+});
+
+describe('notFound, confidence, merged advisories and moved repositories on the page (round 4b)', () => {
+  const dep = (name: string, verdict: string, extra: Record<string, unknown> = {}) => ({
+    dependency: { ecosystem: 'npm', name, spec: '1.0.0', direct: true, scope: 'main', declaredIn: 'package.json' },
+    verdict,
+    evidence: [],
+    advisories: [],
+    successors: [],
+    ...extra,
+  });
+  function stateOf(diagnoses: unknown[]): WatchState {
+    return {
+      version: 1,
+      projects: {
+        p1: {
+          id: 'p1',
+          path: '/work/p1',
+          addedAt: '2026-11-01T00:00:00Z',
+          status: 'ok',
+          snapshot: {},
+          report: { subject: 'x', scannedAt: '2026-11-03T00:00:00Z', manifests: [], diagnoses, problems: [], unavailable: [], summary: {} },
+        },
+      },
+    } as unknown as WatchState;
+  }
+  async function show(diagnoses: unknown[]) {
+    host.get = vi.fn(async () => ({ state: stateOf(diagnoses), problem: null }));
+    render(<App />);
+    return screen.findByTestId('project');
+  }
+
+  it('a package the registry does not know says so, is not counted as alive and has no "Raise the dead" button', async () => {
+    const project = await show([dep('ghost-pkg', 'alive', { notFound: true }), dep('old', 'dead')]);
+    const rows = within(project).getAllByTestId('tombstone');
+    const nf = rows.find((r) => r.getAttribute('data-kind') === 'not-found')!;
+    expect(nf.textContent).toContain('Not found');
+    expect(nf.textContent).toMatch(/not found on the registry \(removed, private or misspelled\)/i);
+    expect(within(nf).getByTestId('not-found-note').textContent).toMatch(/Nothing to migrate/);
+    expect(within(nf).queryByRole('button')).toBeNull();
+    expect(within(rows.find((r) => r.getAttribute('data-kind') === 'verdict')!).getByRole('button')).toBeTruthy();
+    const totals = screen.getAllByTestId('stat').map((s) => s.textContent);
+    expect(totals).toEqual(['✓ Alive 0', '◐ Dying 0', '✝ Dead 1', '◌ Ghost 0', '☣ Zombie 0', '? Not found 1']);
+    expect(within(project).getByTestId('project-not-found').textContent).toContain('1');
+  });
+
+  it('a project where every dependency is not found shows no "No dead dependencies" all-clear', async () => {
+    const project = await show([dep('a', 'alive', { notFound: true }), dep('b', 'alive', { notFound: true })]);
+    expect(within(project).getAllByTestId('tombstone')).toHaveLength(2);
+    expect(project.textContent).not.toContain('No dead dependencies here');
+    expect(screen.getAllByTestId('stat')[0]?.textContent).toBe('✓ Alive 0');
+  });
+
+  it('a low-confidence way out reads as a suggestion, a high one as a way out', async () => {
+    const low = { name: 'padder-lite', ecosystem: 'npm', kind: 'package', reason: 'a plausible fit', source: 'curated', confidence: 'low' };
+    const high = { name: 'fetch', ecosystem: 'npm', kind: 'native', reason: 'built in', source: 'curated', confidence: 'high' };
+    const project = await show([dep('lowdep', 'dead', { successors: [low] }), dep('highdep', 'dead', { successors: [high] })]);
+    const suggestion = within(project).getByTestId('successor-suggestion');
+    expect(suggestion.textContent).toContain('Suggestion');
+    expect(suggestion.textContent).toContain('padder-lite');
+    expect(suggestion.textContent).toMatch(/low confidence/);
+    expect(suggestion.textContent).toMatch(/Ask the person/);
+    expect(within(project).getByTestId('successor').textContent).toContain('Way out: fetch (native)');
+  });
+
+  it('merged advisories show one id with its other ids', async () => {
+    const project = await show([dep('django', 'zombie', { advisories: ['GHSA-1', 'GHSA-2'], advisoryAliases: { 'GHSA-1': ['CVE-2020-1', 'PYSEC-2020-1'] } })]);
+    const text = within(project).getByTestId('advisories').textContent!;
+    expect(text).toContain('GHSA-1 (also CVE-2020-1, PYSEC-2020-1)');
+    expect(text).toContain('GHSA-2');
+    expect(text).not.toContain('CVE-2020-1, PYSEC-2020-1, GHSA');
+  });
+
+  it('a moved repository reads as a note, on a maintained package, with no verdict badge count and no raise button', async () => {
+    const moved = [{ code: 'repo-moved', message: 'The repository was renamed to new-org/codemirror.', source: 'github', url: 'https://github.com/new-org/codemirror' }];
+    const project = await show([dep('codemirror', 'alive', { evidence: moved })]);
+    const row = within(project).getByTestId('tombstone');
+    expect(row.getAttribute('data-kind')).toBe('notice');
+    expect(within(row).getByTestId('moved-note').textContent).toMatch(/renamed to new-org\/codemirror/);
+    expect(within(row).queryByRole('button')).toBeNull();
+    expect(screen.getAllByTestId('stat')[0]?.textContent).toBe('✓ Alive 1');
   });
 });

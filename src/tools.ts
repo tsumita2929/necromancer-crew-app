@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { DependencyRef, Diagnosis, Successor } from '@necromancer/engine';
 import { z } from 'zod';
+import { NOT_FOUND_TEXT, advisoryList, basisInfo, describeSuccessor, isLowConfidence, movedNote } from './advice';
 import type { EnginePort } from './engine-port';
 import { buildGraveyard } from './graveyard';
 import { readManifests as defaultReadManifests, type ReadManifests } from './manifests';
@@ -79,19 +80,21 @@ function toRef(d: z.infer<typeof depInput>): DependencyRef {
   };
 }
 
-/** Whether a verdict rests on a hard signal or on the abandoned heuristic, in words. */
-export function basisInfo(d: Diagnosis): { basis: 'hard' | 'heuristic' | null; label: string } {
-  if (d.verdict === 'alive') return { basis: null, label: 'No blocking signal.' };
-  if (d.basis === 'heuristic') {
-    return {
-      basis: 'heuristic',
-      label: 'Heuristic: a guess from staleness (an old release or a quiet repository), not a hard signal.',
-    };
-  }
-  if (d.basis === 'hard') {
-    return { basis: 'hard', label: 'Hard signal: a fact from a source (deprecated, archived, advisory, yanked, gone).' };
-  }
-  return { basis: null, label: 'The engine did not say whether this rests on a hard signal or a heuristic.' };
+export { basisInfo };
+
+/** What every answer about one dependency says first: verdict, basis, not-found, advisories, moved. */
+function summarize(d: Diagnosis) {
+  const moved = movedNote(d);
+  return {
+    name: d.dependency.name,
+    verdict: d.verdict,
+    notFound: d.notFound === true,
+    ...(d.notFound ? { notFoundText: NOT_FOUND_TEXT } : {}),
+    basis: basisInfo(d),
+    advisories: advisoryList(d),
+    ...(moved ? { moved } : {}),
+    successors: d.successors.map(describeSuccessor),
+  };
 }
 
 export function createToolServer(deps: ToolDeps): McpServer {
@@ -159,26 +162,45 @@ export function createToolServer(deps: ToolDeps): McpServer {
   server.registerTool(
     'diagnose',
     {
-      description: 'Give verdicts and evidence for specific dependencies, without a project.',
+      description:
+        'Give verdicts and evidence for specific dependencies, without a project. "summaries" has one short entry per dependency (verdict, notFound, advisories with their other ids, a moved-repository note, ways out); "diagnoses" has the full engine records. A dependency with notFound=true is unknown to its registry (removed, private or misspelled), which is not the same as alive.',
       inputSchema: { dependencies: z.array(depInput).min(1).max(200) },
       annotations: { readOnlyHint: true },
     },
     guard(async (args: { dependencies: Array<z.infer<typeof depInput>> }) => ({
       ...tag,
-      diagnoses: await engine.engine.diagnose(args.dependencies.map(toRef)),
+      ...(await (async () => {
+        const diagnoses = await engine.engine.diagnose(args.dependencies.map(toRef));
+        return { summaries: diagnoses.map(summarize), diagnoses };
+      })()),
     })),
   );
 
   server.registerTool(
     'successors',
     {
-      description: 'List the ways out for one dependency, best first (package, native or raise).',
+      description:
+        'List the ways out for one dependency, best first (package, native or raise). A way out with isSuggestion=true is low confidence: offer it to the person, do not apply it unasked. A dependency with notFound=true has no verdict and no ways out; tell the person.',
       inputSchema: { ecosystem, name },
       annotations: { readOnlyHint: true },
     },
     guard(async (args: { ecosystem: 'npm' | 'pypi'; name: string }) => {
       const d = await diagnoseOne(args);
-      return { ...tag, verdict: d.verdict, basis: basisInfo(d), successors: d.successors };
+      const sum = summarize(d);
+      const low = d.successors.filter(isLowConfidence).length;
+      return {
+        ...tag,
+        verdict: d.verdict,
+        notFound: sum.notFound,
+        ...(sum.notFoundText ? { notFoundText: sum.notFoundText } : {}),
+        basis: sum.basis,
+        advisories: sum.advisories,
+        ...(sum.moved ? { moved: sum.moved } : {}),
+        successors: sum.successors,
+        ...(d.successors.length > 0 && low === d.successors.length
+          ? { note: 'Every way out is low confidence. Show them to the person as suggestions and ask which one, if any, to use.' }
+          : {}),
+      };
     }),
   );
 
@@ -187,6 +209,11 @@ export function createToolServer(deps: ToolDeps): McpServer {
     d: Diagnosis,
     args: { ecosystem: 'npm' | 'pypi'; name: string; successor?: string },
   ): Successor {
+    if (d.notFound) {
+      throw new ToolInputError(
+        `${args.name} was not found on the ${args.ecosystem} registry (removed, private or misspelled). Do not migrate it. Tell the person, and ask them to check the name and where the package comes from.`,
+      );
+    }
     if (d.verdict === 'alive') {
       throw new ToolInputError(`${args.name} is alive; there is nothing to resurrect.`);
     }
@@ -233,11 +260,30 @@ export function createToolServer(deps: ToolDeps): McpServer {
     return { root: real, sources, usage, project };
   }
 
+  /**
+   * What to tell the agent about the chosen way out. A low-confidence one is a suggestion: the agent
+   * asks the person before using it. When every listed way out is low, the best of them is still chosen
+   * by default, and this says so.
+   */
+  function confirmation(d: Diagnosis, chosen: Successor, explicit: boolean) {
+    const low = isLowConfidence(chosen);
+    const allLow = d.successors.length > 0 && d.successors.every(isLowConfidence);
+    const notes: string[] = [];
+    if (low) {
+      notes.push(
+        allLow && !explicit
+          ? 'Every listed way out is low confidence, so this is the best of a weak list. Ask the person whether to use it, or to name another, before you migrate.'
+          : 'This way out is low confidence: a suggestion, not a drop-in. Ask the person before you migrate.',
+      );
+    }
+    return { needsConfirmation: low, notes };
+  }
+
   server.registerTool(
     'resurrection_spec',
     {
       description:
-        'Write the three Kiro spec files (requirements, design, tasks) for moving a project off one dead dependency. The successor must be one that "successors" lists; the default is the best one. With no successor known it writes a raise spec. Give "path" (the project directory) to scan how the project uses the dependency; the spec then describes the project\'s real calls and the generated séance.',
+        'Write the three Kiro spec files (requirements, design, tasks) for moving a project off one dead dependency. The successor must be one that "successors" lists; the default is the best one. With no successor known it writes a raise spec. Give "path" (the project directory) to scan how the project uses the dependency; the spec then describes the project\'s real calls and the generated séance. A package the registry does not know (notFound) is refused. When the chosen way out has needsConfirmation=true (low confidence), ask the person before you migrate.',
       inputSchema: {
         ecosystem,
         name,
@@ -249,104 +295,146 @@ export function createToolServer(deps: ToolDeps): McpServer {
     guard(async (args: { ecosystem: 'npm' | 'pypi'; name: string; successor?: string; path?: string }) => {
       const d = await diagnoseOne(args);
       const chosen = chooseSuccessor(d, args);
+      const confirm = confirmation(d, chosen, args.successor !== undefined);
+      const common = {
+        ...tag,
+        basis: basisInfo(d),
+        advisories: advisoryList(d),
+        ...(movedNote(d) ? { moved: movedNote(d) } : {}),
+        successor: describeSuccessor(chosen),
+        needsConfirmation: confirm.needsConfirmation,
+        notes: confirm.notes,
+      };
       if (args.path !== undefined) {
         const { usage, sources, root } = await scanProject(args.path, { ecosystem: args.ecosystem, name: args.name });
         const testRunner = await readTestRunner(root);
         return {
-          ...tag,
-          basis: basisInfo(d),
-          successor: chosen,
+          ...common,
           usage: summarizeUsage(usage, sources),
           project: { testRunner: testRunner ?? null },
           spec: engine.engine.resurrectionSpec(d, chosen, { usage, project: testRunner ? { testRunner } : {} }),
         };
       }
-      return { ...tag, basis: basisInfo(d), successor: chosen, spec: engine.engine.resurrectionSpec(d, chosen) };
+      return { ...common, spec: engine.engine.resurrectionSpec(d, chosen) };
     }),
   );
+
+  type SeanceArgs = {
+    ecosystem: 'npm' | 'pypi';
+    name: string;
+    path: string;
+    successor?: string;
+    importNames?: string[];
+    acceptLowConfidence?: boolean;
+  };
+
+  const seanceShape = {
+    ecosystem,
+    name,
+    path: z.string().min(1).describe('Absolute path of the project directory.'),
+    successor: z.string().min(1).optional().describe('Successor name; default the best listed one, or raise.'),
+    importNames: z.array(z.string().min(1).max(100)).max(10).optional().describe('Python import names when they differ from the distribution name.'),
+  };
+
+  /** Scan, choose, generate. Writes nothing. Shared by the preview and the write tool. */
+  async function prepareSeance(args: SeanceArgs) {
+    const d = await diagnoseOne(args);
+    const chosen = chooseSuccessor(d, args);
+    const confirm = confirmation(d, chosen, args.successor !== undefined);
+    const { root, sources, usage } = await scanProject(args.path, {
+      ecosystem: args.ecosystem,
+      name: args.name,
+      ...(args.importNames ? { importNames: args.importNames } : {}),
+    });
+    const bundle = engine.engine.seance!(d, chosen, usage);
+    if (bundle.files.length === 0) throw new ToolInputError('The generator returned no files.');
+    const generic = bundle.recipe === null;
+    const report = summarizeUsage(usage, sources);
+    const notes: string[] = [...confirm.notes];
+    if (generic) {
+      notes.push(
+        'No curated recipe exists for this pair, so this is the generic template. Its comparisons are SKIPPED until the replacement module sets READY. Write the replacement, fill each TODO(necromancer) marker (generators and comparison), then set READY.',
+      );
+    }
+    if (bundle.todos > 0 && !generic) {
+      notes.push(`${bundle.todos} TODO(necromancer) marker(s) remain in the files. Resolve them.`);
+    }
+    const cleaned = cleanInstall(bundle.install, args.name);
+    if (cleaned.note) notes.push(cleaned.note);
+    if (bundle.language === 'javascript') {
+      notes.push(
+        'The generated séance runs under Vitest, which needs Node 22.12 or newer. If the project supports older Node, say so in the report. If the project runs tests with node --test, keep the Vitest file out of that run (for example "test": "node --test test/*.test.js") and add a separate script ("seance": "vitest run seance").',
+      );
+    }
+    const moved = movedNote(d);
+    const base = {
+      ...tag,
+      dependency: args.name,
+      verdict: d.verdict,
+      basis: basisInfo(d),
+      advisories: advisoryList(d),
+      ...(moved ? { moved } : {}),
+      successor: describeSuccessor(chosen),
+      needsConfirmation: confirm.needsConfirmation,
+      language: bundle.language,
+      recipe: bundle.recipe,
+      template: generic ? 'generic' : 'curated',
+      comparisonsSkipped: generic,
+      todos: bundle.todos,
+      install: cleaned.install,
+      run: bundle.run,
+      compares: bundle.compares,
+      members: bundle.members,
+      knownDifferences: bundle.knownDifferences,
+      usage: report,
+      notes,
+    };
+    return { base, bundle, root, chosen };
+  }
 
   server.registerTool(
     'seance',
     {
       description:
-        'Generate the séance for moving a project off one dead dependency: a differential property-based test that asks the old package and its replacement the same generated questions, using the project\'s own calls as examples. Scans the project at "path", picks a curated recipe when one exists (else a generic template whose comparisons stay skipped until the replacement sets READY), and returns the files, the install and run commands, what it compares, and the known differences. With write=true the files are written into the project, but only while it is on a branch named resurrect/<dependency>, and never over a file that differs.',
+        'PREVIEW of the séance for moving a project off one dead dependency. Read-only: it scans the project at "path" and returns the files, the install and run commands, what they compare and the known differences, and it never writes anything. It is a differential property-based test that asks the old package and its replacement the same generated questions, using the project\'s own calls as examples; a curated recipe is used when one exists, else a generic template whose comparisons stay skipped until the replacement sets READY. To put the files into the project, call seance_write on a resurrect/<dependency> branch. If the answer has needsConfirmation=true (a low-confidence way out), ask the person first. A package the registry does not know (notFound) is refused.',
+      inputSchema: seanceShape,
+      annotations: { readOnlyHint: true },
+    },
+    guard(async (args: SeanceArgs) => {
+      const { base, bundle } = await prepareSeance(args);
+      return { ...base, wrote: false, files: bundle.files };
+    }),
+  );
+
+  server.registerTool(
+    'seance_write',
+    {
+      description:
+        'WRITE the séance files into the project. Only while the project is on a git branch named resurrect/<dependency>; never over a file that differs; never outside the project. Use "seance" first to preview. A low-confidence way out is refused unless the person agreed and you pass acceptLowConfidence=true. A package the registry does not know (notFound) is refused.',
       inputSchema: {
-        ecosystem,
-        name,
-        path: z.string().min(1).describe('Absolute path of the project directory.'),
-        successor: z.string().min(1).optional().describe('Successor name; default the best listed one, or raise.'),
-        importNames: z.array(z.string().min(1).max(100)).max(10).optional().describe('Python import names when they differ from the distribution name.'),
-        write: z.boolean().optional().describe('Write the files into the project (resurrection branch only).'),
+        ...seanceShape,
+        acceptLowConfidence: z
+          .boolean()
+          .optional()
+          .describe('Set true only after the person agreed to use a low-confidence way out.'),
       },
     },
-    guard(
-      async (args: {
-        ecosystem: 'npm' | 'pypi';
-        name: string;
-        path: string;
-        successor?: string;
-        importNames?: string[];
-        write?: boolean;
-      }) => {
-        const d = await diagnoseOne(args);
-        const chosen = chooseSuccessor(d, args);
-        const { root, sources, usage } = await scanProject(args.path, {
-          ecosystem: args.ecosystem,
-          name: args.name,
-          ...(args.importNames ? { importNames: args.importNames } : {}),
-        });
-        const bundle = engine.engine.seance!(d, chosen, usage);
-        if (bundle.files.length === 0) throw new ToolInputError('The generator returned no files.');
-        const generic = bundle.recipe === null;
-        const report = summarizeUsage(usage, sources);
-        const notes: string[] = [];
-        if (generic) {
-          notes.push(
-            'No curated recipe exists for this pair, so this is the generic template. Its comparisons are SKIPPED until the replacement module sets READY. Write the replacement, fill each TODO(necromancer) marker (generators and comparison), then set READY.',
-          );
-        }
-        if (bundle.todos > 0 && !generic) {
-          notes.push(`${bundle.todos} TODO(necromancer) marker(s) remain in the files. Resolve them.`);
-        }
-        const cleaned = cleanInstall(bundle.install, args.name);
-        if (cleaned.note) notes.push(cleaned.note);
-        if (bundle.language === 'javascript') {
-          notes.push(
-            'The generated séance runs under Vitest, which needs Node 22.12 or newer. If the project supports older Node, say so in the report. If the project runs tests with node --test, keep the Vitest file out of that run (for example "test": "node --test test/*.test.js") and add a separate script ("seance": "vitest run seance").',
-          );
-        }
-        const base = {
-          ...tag,
-          dependency: args.name,
-          verdict: d.verdict,
-          basis: basisInfo(d),
-          successor: chosen,
-          language: bundle.language,
-          recipe: bundle.recipe,
-          template: generic ? 'generic' : 'curated',
-          comparisonsSkipped: generic,
-          todos: bundle.todos,
-          install: cleaned.install,
-          run: bundle.run,
-          compares: bundle.compares,
-          members: bundle.members,
-          knownDifferences: bundle.knownDifferences,
-          usage: report,
-          notes,
-        };
-        if (args.write === true) {
-          const result = await writeBundle(root, bundle);
-          return {
-            ...base,
-            wrote: true,
-            branch: result.branch,
-            written: result.written,
-            unchanged: result.unchanged,
-          };
-        }
-        return { ...base, wrote: false, files: bundle.files };
-      },
-    ),
+    guard(async (args: SeanceArgs) => {
+      const { base, bundle, root, chosen } = await prepareSeance(args);
+      if (isLowConfidence(chosen) && args.acceptLowConfidence !== true) {
+        throw new ToolInputError(
+          `${chosen.name} is a low-confidence way out for ${args.name}: a suggestion, not a drop-in. Nothing was written. Ask the person whether to use it, then call seance_write again with acceptLowConfidence=true.`,
+        );
+      }
+      const result = await writeBundle(root, bundle);
+      return {
+        ...base,
+        wrote: true,
+        branch: result.branch,
+        written: result.written,
+        unchanged: result.unchanged,
+      };
+    }),
   );
 
   server.registerTool(

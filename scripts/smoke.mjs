@@ -33,7 +33,7 @@ console.log(
 );
 
 await client.close();
-if (tools.length < 10 || call.isError || body.verdict !== 'dead') {
+if (tools.length < 11 || call.isError || body.verdict !== 'dead') {
   console.error('SMOKE FAILED');
   process.exit(1);
 }

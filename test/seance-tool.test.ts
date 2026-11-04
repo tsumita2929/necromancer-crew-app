@@ -137,13 +137,13 @@ describe('seance tool (live R-seance)', () => {
   it('write=true writes the bundle on a resurrect/ branch, and a second call changes nothing', async () => {
     const call = await connect(engineWith('dead', [PADSTART]));
     const dir = repoOn('resurrect/left-pad');
-    const first = await call('seance', { ecosystem: 'npm', name: 'left-pad', path: dir, write: true });
+    const first = await call('seance_write', { ecosystem: 'npm', name: 'left-pad', path: dir });
     expect(first.isError).toBe(false);
     expect(first.json.wrote).toBe(true);
     expect(first.json.branch).toBe('resurrect/left-pad');
     expect(first.json.written.length).toBeGreaterThan(1);
     for (const rel of first.json.written) expect(existsSync(path.join(dir, rel))).toBe(true);
-    const second = await call('seance', { ecosystem: 'npm', name: 'left-pad', path: dir, write: true });
+    const second = await call('seance_write', { ecosystem: 'npm', name: 'left-pad', path: dir });
     expect(second.json.written).toEqual([]);
     expect(second.json.unchanged.sort()).toEqual(first.json.written.sort());
   });
@@ -151,7 +151,7 @@ describe('seance tool (live R-seance)', () => {
   it('write=true on main is refused and nothing is written', async () => {
     const call = await connect(engineWith('dead', [PADSTART]));
     const dir = repoOn('main');
-    const r = await call('seance', { ecosystem: 'npm', name: 'left-pad', path: dir, write: true });
+    const r = await call('seance_write', { ecosystem: 'npm', name: 'left-pad', path: dir });
     expect(r.isError).toBe(true);
     expect(r.text).toMatch(/branch "main"/);
     expect(git(dir, 'status', '--porcelain')).toBe('');
@@ -160,7 +160,7 @@ describe('seance tool (live R-seance)', () => {
   it('write=true outside a git repository is refused', async () => {
     const call = await connect(engineWith('dead', [PADSTART]));
     const dir = project({ 'package.json': '{}', 'src/a.js': "const p = require('left-pad'); p('a', 3);" });
-    const r = await call('seance', { ecosystem: 'npm', name: 'left-pad', path: dir, write: true });
+    const r = await call('seance_write', { ecosystem: 'npm', name: 'left-pad', path: dir });
     expect(r.isError).toBe(true);
     expect(r.text).toMatch(/not a git repository/);
     expect(existsSync(path.join(dir, 'seance'))).toBe(false);
@@ -173,7 +173,7 @@ describe('seance tool (live R-seance)', () => {
     const [first, second] = probe.json.files;
     mkdirSync(path.dirname(path.join(dir, first.path)), { recursive: true });
     writeFileSync(path.join(dir, first.path), 'my own work\n');
-    const r = await call('seance', { ecosystem: 'npm', name: 'left-pad', path: dir, write: true });
+    const r = await call('seance_write', { ecosystem: 'npm', name: 'left-pad', path: dir });
     expect(r.isError).toBe(true);
     expect(r.text).toMatch(/Refused to overwrite/);
     expect(readFileSync(path.join(dir, first.path), 'utf8')).toBe('my own work\n');

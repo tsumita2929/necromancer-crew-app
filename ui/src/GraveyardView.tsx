@@ -59,6 +59,12 @@ function when(iso?: string): string {
   return Number.isNaN(d.getTime()) ? 'unknown time' : d.toLocaleString();
 }
 
+/** "GHSA-x (also CVE-y, PYSEC-z)": one entry per vulnerability, with the other ids of the same one. */
+export function advisoryLine(list: Tombstone['advisoryList']): string {
+  const shown = list.slice(0, 3).map((a) => (a.also.length > 0 ? `${a.id} (also ${a.also.slice(0, 4).join(', ')}${a.also.length > 4 ? ', ...' : ''})` : a.id));
+  return shown.join('; ') + (list.length > 3 ? `; and ${list.length - 3} more` : '');
+}
+
 function TombstoneRow({
   t,
   onRaise,
@@ -67,34 +73,64 @@ function TombstoneRow({
   onRaise: (t: Tombstone) => void;
 }) {
   return (
-    <li className="necro-fade py-3 border-t border-border first:border-t-0" data-testid="tombstone">
+    <li className="necro-fade py-3 border-t border-border first:border-t-0" data-testid="tombstone" data-kind={t.kind}>
       <div className="flex flex-wrap items-center gap-2">
-        <VerdictBadge verdict={t.verdict} />
+        {t.kind === 'not-found' ? (
+          <Badge variant="warn" title="The registry does not know this package">
+            <span aria-hidden="true">?</span>
+            <span>Not found</span>
+          </Badge>
+        ) : (
+          <VerdictBadge verdict={t.verdict} />
+        )}
         <span className="font-mono text-sm font-semibold">{t.name}</span>
         {t.spec && <span className="font-mono text-xs text-muted">{t.spec}</span>}
         <span className="text-xs text-muted">{t.ecosystem}</span>
         <span className="flex-1" />
-        <button
-          type="button"
-          className="necro-btn"
-          onClick={() => onRaise(t)}
-          aria-label={`Raise the dead: ${t.name}. Opens a chat draft with the Necromancer agent.`}
-        >
-          Raise the dead
-        </button>
+        {t.kind === 'verdict' && (
+          <button
+            type="button"
+            className="necro-btn"
+            onClick={() => onRaise(t)}
+            aria-label={`Raise the dead: ${t.name}. Opens a chat draft with the Necromancer agent.`}
+          >
+            Raise the dead
+          </button>
+        )}
       </div>
       <p className="text-sm mt-1.5 italic">&ldquo;{t.epitaph}&rdquo;</p>
-      {t.basis && <BasisLine basis={t.basis} />}
-      {t.advisories.length > 0 && (
-        <p className="text-xs text-muted mt-1">Known advisories: {t.advisories.join(', ')}</p>
-      )}
-      {t.successor ? (
-        <p className="text-xs text-muted mt-1">
-          Way out: <span className="font-mono">{t.successor.name}</span> ({t.successor.kind}). {t.successor.reason}
+      {t.kind === 'not-found' && (
+        <p className="text-xs text-muted mt-1" data-testid="not-found-note">
+          Nothing to migrate: check the name, or whether the package is private. It is not counted as alive.
         </p>
-      ) : (
-        <p className="text-xs text-muted mt-1">No successor is known.</p>
       )}
+      {t.basis && <BasisLine basis={t.basis} />}
+      {t.moved && (
+        <p className="text-xs text-muted mt-1" data-testid="moved-note">
+          Repository moved: {t.moved}
+        </p>
+      )}
+      {t.advisoryList.length > 0 && (
+        <p className="text-xs text-muted mt-1" data-testid="advisories">
+          Known {t.advisoryList.length === 1 ? 'vulnerability' : 'vulnerabilities'}: {advisoryLine(t.advisoryList)}
+        </p>
+      )}
+      {t.kind === 'verdict' &&
+        (t.successor ? (
+          <p className="text-xs text-muted mt-1" data-testid={t.suggestion ? 'successor-suggestion' : 'successor'}>
+            {t.suggestion ? (
+              <>
+                <Badge variant="aim">Suggestion</Badge>{' '}
+              </>
+            ) : (
+              'Way out: '
+            )}
+            <span className="font-mono">{t.successor.name}</span> ({t.successor.kind}). {t.successor.reason}
+            {t.suggestion && ` ${t.successorAdvice ?? ''}`}
+          </p>
+        ) : (
+          <p className="text-xs text-muted mt-1">No successor is known.</p>
+        ))}
     </li>
   );
 }
@@ -131,6 +167,17 @@ function ProjectCard({
               </span>
             </span>
           ))}
+          {p.notFound > 0 && (
+            <span className="inline-flex items-center gap-1" data-testid="project-not-found">
+              <Badge variant="warn">
+                <span aria-hidden="true">?</span>
+                <span>Not found</span>
+              </Badge>
+              <span className="font-mono text-xs" aria-label={`${p.notFound} not found`}>
+                {p.notFound}
+              </span>
+            </span>
+          )}
         </div>
         <div className="text-xs text-muted mt-1">
           Last scan: {when(p.lastScanAt)}
@@ -212,6 +259,7 @@ export function GraveyardView({ graveyard, demo, loading, error, onRaise, onAskT
             accent={v === 'zombie' || v === 'dead'}
           />
         ))}
+        <StatCard label="? Not found" value={loading ? '…' : graveyard.notFound} />
       </div>
       <p className="text-xs text-muted mb-4" data-testid="basis-legend">
         Each verdict says what it rests on. A <strong>hard signal</strong> is a fact from a source. A <strong>heuristic</strong> is a
