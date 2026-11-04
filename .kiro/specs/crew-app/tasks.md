@@ -1,0 +1,24 @@
+# Tasks: Necromancer Kiro Crew app
+
+- [x] 1. Write requirements.md, design.md, tasks.md (R1–R7)
+- [x] 2. Scaffold `apps/crew` with `kirocrew app init necromancer --ui --backend --dir apps` and trim to our shape
+  - [x] 2.1 `package.json`, `tsconfig.json`, `vitest.config.ts`, install dev dependencies (R1.1)
+  - [x] 2.2 `app.json` with minimal permissions and the Night Watch cron (R1.2, R4.12)
+- [x] 3. Engine port and stub engine with fixtures (R5.2, R5.3)
+- [x] 4. Store: atomic JSON, corrupt-file recovery (R3.5, R3.6)
+- [x] 5. Night Watch core: `rank`, `detectWorse`, `mergeSnapshot`, `runNightWatch` (R4.1–R4.11)
+- [x] 6. MCP server and tools, `mcp/launch.py` (R5.1–R5.6, R3.1–R3.4)
+- [x] 7. Tests
+  - [x] 7.1 Store and watchlist tests (R3)
+  - [x] 7.2 Night Watch unit tests for the five nearby inputs (R4)
+  - [x] 7.3 fast-check properties (R4.2, R4.3, R4.4, R4.7, R4.8)
+  - [x] 7.4 MCP tool tests over an in-memory transport (R5)
+  - [x] 7.5 Contract test for verdict order
+  - [x] 7.6 Stdio smoke script against `mcp/launch.py`
+- [x] 8. Python backend `backend/server.py` serving the graveyard (R2)
+- [x] 9. Graveyard page: summary, projects, tombstones, demo data, keyboard and reduced motion (R2)
+- [x] 10. Necromancer agent and resurrection skill (R6)
+- [x] 11. Kiro hooks `crew-*.kiro.hook`
+- [x] 12. Build, `kirocrew app install` tried (refused: CLI not logged in as owner), result recorded (R1.1 not yet proven live)
+- [ ] 13. Owner step: install, trust the app in Settings, then enable (R1.3, R1.4) — waits on the owner
+- [x] 14. Write `docs/verification/crew-app.md` after the tests pass and the install was tried

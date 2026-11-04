@@ -1,0 +1,17 @@
+{
+  "enabled": true,
+  "name": "Crew app: remind to rebuild the bundles",
+  "description": "The installed app runs dist/ bundles, which are not committed. After source changes, rebuild before updating the installed copy.",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "src/**/*.ts",
+      "ui/src/**/*.tsx"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Source of the Necromancer Kiro Crew app changed. Run `npm run build` at the repository root, then `npm run smoke`, and report the 'SMOKE OK' line. The installed copy only changes when the owner runs the app's Update action or `kirocrew app install` again; say so if a rebuild was needed."
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "enabled": true,
+  "name": "Crew app: keep permissions minimal",
+  "description": "When the Kiro Crew manifest or the code that calls the platform changes, check that app.json asks only for what the app uses.",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "app.json",
+      "ui/src/**/*.tsx",
+      "backend/server.py"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "app.json or the code behind it changed. Review the manifest against the code, in this order: (1) every entry in permissions.api must be a path the page in ui/src actually requests, and every request must be covered; (2) permissions must not contain network, spawn, sessionApproval, memory, storage or mcpTools unless the code now uses them (name the line that does); (3) crons must exist only together with permissions.cron true, must set timezone, silent and persistent_session, and the night-watch cron must keep a daily schedule; (4) mcpServers autoApprove must not include watch_remove or any tool that deletes data; (5) nothing may write to or change trust settings (apps_trusted, apps_allow_third_party). Then run `npm run check` at the repository root and report the result lines. Report only problems found, with the file and line. If everything holds, answer in one line."
+  }
+}

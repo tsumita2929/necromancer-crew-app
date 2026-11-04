@@ -1,4 +1,17 @@
+# Dependencies and local data
 node_modules/
-dist/
 data/
+coverage/
+.vite/
+*.tsbuildinfo
+
+# Local environment and logs
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+
+# dist/ and ui/dist/ are committed on purpose: the installed app runs the built bundles.
+# Note: /.kiro (specs, hooks, steering) is part of the submission. Never ignore it.
 __pycache__/

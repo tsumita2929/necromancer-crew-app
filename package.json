@@ -1,10 +1,10 @@
 {
-  "name": "@necromancer/crew-app",
+  "name": "necromancer-crew-app",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "license": "MIT",
-  "description": "Necromancer Kiro Crew app: Graveyard page, Night Watch job, agent, skill and MCP server.",
+  "description": "Necromancer: a Kiro Crew app (Graveyard page, Night Watch job, Necromancer agent, resurrection skill, MCP server).",
   "engines": {
     "node": ">=22.12"
   },
@@ -15,17 +15,14 @@
     "check": "npm run typecheck && npm test",
     "bundle:mcp": "node scripts/build-mcp.mjs",
     "bundle:ui": "npm --prefix ui run build",
-    "bundle": "npm run bundle:mcp && npm run bundle:ui && node scripts/check-bundles.mjs",
-    "build": "npm run bundle",
-    "export": "node scripts/export-repo.mjs",
-    "verify:export": "node scripts/verify-export.mjs"
+    "bundle": "npm run bundle:mcp && npm run bundle:ui && node scripts/check-bundles.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@necromancer/engine": "file:../../packages/engine",
+    "@necromancer/engine": "file:vendor/engine",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.8",
@@ -40,5 +37,10 @@
     "react-dom": "^18.3.1",
     "typescript": "^5.7.0",
     "vitest": "^5.1.0"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tsumita2929/necromancer-crew-app.git"
+  },
+  "homepage": "https://github.com/tsumita2929/necromancer-crew-app"
 }

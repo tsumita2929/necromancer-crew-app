@@ -1,0 +1,18 @@
+{
+  "enabled": true,
+  "name": "Crew app: guard the Night Watch rules",
+  "description": "When the verdict-change detector or its store changes, run the property tests and confirm each rule still has a test that cites it.",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "src/nightwatch.ts",
+      "src/store.ts",
+      "src/verdict.ts"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Night Watch logic changed. Run `npm test` at the repository root and show the Tests and Test Files result lines. Then open .kiro/specs/crew-app/requirements.md, section R4, and for each numbered criterion R4.1 to R4.12 confirm that a test in test whose name starts with that number exists and passes (R4.12 is checked in app.json, not by a test). List any criterion without a test. If the change touched detectWorse or mergeSnapshot, also state in one sentence whether the rule 'never notifies when nothing got worse, always notifies when something did' still holds and which property test proves it. Do not edit code unless a test fails; if one fails, show the counterexample first."
+  }
+}
