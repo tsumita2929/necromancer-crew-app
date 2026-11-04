@@ -140,7 +140,7 @@ describe('MCP tools (R5)', () => {
       'requirements.txt': 'nose==1.3.7\nrequests>=2\n# comment\n',
     });
     const r = await call('autopsy', { path: dir });
-    expect(r.json.report.summary).toEqual({ alive: 2, dying: 1, dead: 2, ghost: 0, zombie: 0 });
+    expect(r.json.report.summary).toEqual({ alive: 2, dying: 1, dead: 2, ghost: 0, zombie: 0, notFound: 0 });
     expect(r.json.report.subject).toBe(`local:${dir}`);
   });
 

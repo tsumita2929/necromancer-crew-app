@@ -466,7 +466,8 @@ describe('the real engine through the tools, on a made-up registry (no network)'
     });
     const [gone, moved, merged] = r.json.summaries;
     expect(gone.notFound).toBe(true);
-    expect(gone.verdict).toBe('alive');
+    expect(gone.verdict).toBe('not-found');
+    expect(gone.engineVerdict).toBe('alive');
     expect(moved.moved.message).toMatch(/moved|renamed/);
     expect(moved.verdict).not.toBe('dead');
     expect(merged.advisories).toHaveLength(1);

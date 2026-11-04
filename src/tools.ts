@@ -1,5 +1,5 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { DependencyRef, Diagnosis, Successor } from '@necromancer/engine';
+import type { AutopsyReport, DependencyRef, Diagnosis, Successor } from '@necromancer/engine';
 import { z } from 'zod';
 import { NOT_FOUND_TEXT, advisoryList, basisInfo, describeSuccessor, isLowConfidence, movedNote, upgradeNotice, versionsNote } from './advice';
 import type { EnginePort } from './engine-port';
@@ -91,13 +91,35 @@ function toRef(d: z.infer<typeof depInput> & { resolved?: string }): DependencyR
 
 export { basisInfo };
 
+/**
+ * The verdict a client sees. The engine says "alive" for a package its registry does not know (nothing was
+ * checked, so nothing is claimed). A client that reads only `verdict` must never see "alive" for it, so the
+ * tools say "not-found" and keep the engine's value under `engineVerdict`.
+ */
+export const NOT_FOUND_VERDICT = 'not-found' as const;
+
+export function clientDiagnosis<D extends Diagnosis>(d: D): Omit<D, 'verdict'> & { verdict: D['verdict'] | typeof NOT_FOUND_VERDICT; engineVerdict?: D['verdict'] } {
+  return d.notFound ? { ...d, verdict: NOT_FOUND_VERDICT, engineVerdict: d.verdict } : d;
+}
+
+/** An autopsy report for a client: not-found packages are not alive, and the summary does not count them as alive. */
+export function clientReport(report: AutopsyReport) {
+  const missing = report.diagnoses.filter((d) => d.notFound).length;
+  return {
+    ...report,
+    diagnoses: report.diagnoses.map(clientDiagnosis),
+    summary: { ...report.summary, alive: Math.max(0, report.summary.alive - missing), notFound: missing },
+  };
+}
+
 /** What every answer about one dependency says first: verdict, basis, not-found, advisories, moved. */
 function summarize(d: Diagnosis) {
   const moved = movedNote(d);
   const upgrade = upgradeNotice(d);
   return {
     name: d.dependency.name,
-    verdict: d.verdict,
+    verdict: d.notFound ? NOT_FOUND_VERDICT : d.verdict,
+    ...(d.notFound ? { engineVerdict: d.verdict } : {}),
     notFound: d.notFound === true,
     ...(d.notFound ? { notFoundText: NOT_FOUND_TEXT } : {}),
     basis: basisInfo(d),
@@ -124,7 +146,7 @@ export function createToolServer(deps: ToolDeps): McpServer {
     'autopsy',
     {
       description:
-        'Scan a project and give every dependency a verdict (alive, dying, dead, ghost, zombie) with evidence. Give either "path" (a local directory, read-only) or "files" (manifest contents).',
+        'Scan a project and give every dependency a verdict (alive, dying, dead, ghost, zombie, or not-found when the registry does not know the package) with evidence. In the summary, not-found packages are counted under notFound, never under alive. Give either "path" (a local directory, read-only) or "files" (manifest contents).',
       inputSchema: {
         path: z.string().min(1).optional().describe('Absolute path of a local project directory.'),
         files: z
@@ -162,11 +184,11 @@ export function createToolServer(deps: ToolDeps): McpServer {
             skipped: read.problems,
             limits: 'manifests up to 3 levels deep, at most 40 files, 2 MB each; node_modules, .git, dist and virtual environments are skipped; symbolic links are not followed',
           },
-          report,
+          report: clientReport(report),
         };
       }
       const report = await engine.engine.autopsy({ subject: 'upload', files: args.files ?? [] });
-      return { ...tag, report };
+      return { ...tag, report: clientReport(report) };
     }),
   );
 
@@ -174,7 +196,7 @@ export function createToolServer(deps: ToolDeps): McpServer {
     'diagnose',
     {
       description:
-        'Give verdicts and evidence for specific dependencies, without a project. "summaries" has one short entry per dependency (verdict, notFound, advisories with their other ids, a moved-repository note, ways out); "diagnoses" has the full engine records. A dependency with notFound=true is unknown to its registry (removed, private or misspelled), which is not the same as alive. A living package whose version in use is deprecated or yanked has verdict alive and an "upgrade" entry ("Upgrade to <version>"): tell the person to upgrade; it is never dying and never migrated.',
+        'Give verdicts and evidence for specific dependencies, without a project. "summaries" has one short entry per dependency (verdict, notFound, advisories with their other ids, a moved-repository note, ways out); "diagnoses" has the full engine records. A dependency whose verdict is "not-found" is unknown to its registry (removed, private or misspelled): nothing was checked, so it is not alive (the value the engine gave is under engineVerdict). A living package whose version in use is deprecated or yanked has verdict alive and an "upgrade" entry ("Upgrade to <version>"): tell the person to upgrade; it is never dying and never migrated.',
       inputSchema: { dependencies: z.array(depInput).min(1).max(200) },
       annotations: { readOnlyHint: true },
     },
@@ -182,7 +204,7 @@ export function createToolServer(deps: ToolDeps): McpServer {
       ...tag,
       ...(await (async () => {
         const diagnoses = await engine.engine.diagnose(args.dependencies.map(toRef));
-        return { summaries: diagnoses.map(summarize), diagnoses };
+        return { summaries: diagnoses.map(summarize), diagnoses: diagnoses.map(clientDiagnosis) };
       })()),
     })),
   );
@@ -201,7 +223,8 @@ export function createToolServer(deps: ToolDeps): McpServer {
       const low = d.successors.filter(isLowConfidence).length;
       return {
         ...tag,
-        verdict: d.verdict,
+        verdict: sum.verdict,
+        ...(sum.notFound ? { engineVerdict: d.verdict } : {}),
         notFound: sum.notFound,
         ...(sum.notFoundText ? { notFoundText: sum.notFoundText } : {}),
         basis: sum.basis,
@@ -331,7 +354,7 @@ export function createToolServer(deps: ToolDeps): McpServer {
     'resurrection_spec',
     {
       description:
-        'Write the three Kiro spec files (requirements, design, tasks) for moving a project off one dead dependency. The successor must be one that "successors" lists; the default is the best one. With no successor known it writes a raise spec. Give "path" (the project directory) to scan how the project uses the dependency; the spec then describes the project\'s real calls and the generated séance. A package the registry does not know (notFound) is refused, and so is a living package with only a deprecated or yanked version (upgrade it instead). When the chosen way out has needsConfirmation=true (low confidence), ask the person before you migrate.',
+        'Returns the text of the three Kiro spec files (requirements.md, design.md, tasks.md) for moving a project off one dead dependency, in "spec". It writes nothing: you write the three files to .kiro/specs/migrate-off-<dependency>/. The successor must be one that "successors" lists; the default is the best one. With no successor known it writes a raise spec. Give "path" (the project directory) to scan how the project uses the dependency; the spec then describes the project\'s real calls and the generated séance. A package the registry does not know (notFound) is refused, and so is a living package with only a deprecated or yanked version (upgrade it instead). When the chosen way out has needsConfirmation=true (low confidence), ask the person before you migrate.',
       inputSchema: {
         ecosystem,
         name,
@@ -560,11 +583,21 @@ export function createToolServer(deps: ToolDeps): McpServer {
   server.registerTool(
     'graveyard',
     {
-      description: 'The stored graveyard: per project, verdict counts and the non-alive dependencies, worst first.',
+      description: 'The stored graveyard: per project, verdict counts and the non-alive dependencies, worst first, then packages the registry does not know (verdict "not-found", counted apart, never alive).',
       inputSchema: {},
       annotations: { readOnlyHint: true },
     },
-    guard(async () => buildGraveyard(await store.load())),
+    guard(async () => {
+      const g = buildGraveyard(await store.load());
+      // A not-found row reads "not-found", never the engine's "alive".
+      return {
+        ...g,
+        projects: g.projects.map((p) => ({
+          ...p,
+          tombstones: p.tombstones.map((t) => (t.kind === 'not-found' ? { ...t, verdict: NOT_FOUND_VERDICT, engineVerdict: t.verdict } : t)),
+        })),
+      };
+    }),
   );
 
   return server;
