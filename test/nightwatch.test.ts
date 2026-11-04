@@ -194,3 +194,35 @@ describe('readManifests', () => {
     expect(files.map((f) => f.path).sort()).toEqual(['apps/api/requirements.txt', 'package.json']);
   });
 });
+
+describe('Night Watch notices say what the verdict rests on', () => {
+  const withBasis = (basis: 'hard' | 'heuristic' | undefined): Engine => {
+    const base = scriptedEngine({ snapshot: { 'npm:a': 'alive' } }, { snapshot: { 'npm:a': 'dying' } });
+    return {
+      ...base,
+      async autopsy(input) {
+        const report = await base.autopsy(input);
+        return {
+          ...report,
+          diagnoses: report.diagnoses.map((d) => (basis ? { ...d, basis } : d)),
+        };
+      },
+    };
+  };
+
+  for (const [basis, expected] of [
+    ['heuristic', 'Basis: heuristic (a guess from staleness, not a hard signal).'],
+    ['hard', 'Basis: hard signal.'],
+    [undefined, undefined],
+  ] as const) {
+    it(`a ${basis ?? 'missing'} basis ${expected ? 'is named in' : 'adds nothing to'} the notification`, async () => {
+      const { store, run } = setup(withBasis(basis));
+      await store.addProject(project());
+      await run();
+      const second = await run();
+      expect(second.notifications).toHaveLength(1);
+      if (expected) expect(second.notifications[0]!.body).toContain(expected);
+      else expect(second.notifications[0]!.body).not.toContain('Basis:');
+    });
+  }
+});

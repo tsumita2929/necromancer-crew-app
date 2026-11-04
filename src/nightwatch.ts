@@ -86,11 +86,17 @@ function worseNotification(p: WatchedProject, w: Worsened, d: Diagnosis | undefi
   const why = d?.evidence[0]?.message ?? 'No evidence line was recorded.';
   const successor = d?.successors[0];
   const way = successor ? ` Way out: ${successor.name} (${successor.kind}).` : '';
+  const basis =
+    d?.basis === 'heuristic'
+      ? ' Basis: heuristic (a guess from staleness, not a hard signal).'
+      : d?.basis === 'hard'
+        ? ' Basis: hard signal.'
+        : '';
   return {
     kind: 'worse',
     projectId: p.id,
     title: `${name} went from ${w.from} to ${w.to}`,
-    body: `${p.path}: ${why}${way} Ask the Necromancer agent to raise it.`,
+    body: `${p.path}: ${why}${basis}${way} Ask the Necromancer agent to raise it.`,
   };
 }
 

@@ -38,6 +38,21 @@ export function VerdictBadge({ verdict }: { verdict: Verdict }) {
   );
 }
 
+export const BASIS_TEXT = {
+  hard: 'Hard signal: a fact from a source (deprecated, archived, advisory, yanked or gone).',
+  heuristic: 'Heuristic: a guess from staleness (an old release or a quiet repository), not a hard signal.',
+} as const;
+
+/** Says in words whether a verdict rests on a fact or on a guess. A heuristic verdict is labelled with a badge as well. */
+function BasisLine({ basis }: { basis: 'hard' | 'heuristic' }) {
+  return (
+    <p className="text-xs text-muted mt-1 flex flex-wrap items-center gap-1.5" data-testid={`basis-${basis}`}>
+      {basis === 'heuristic' && <Badge variant="muted">Heuristic</Badge>}
+      <span>{BASIS_TEXT[basis]}</span>
+    </p>
+  );
+}
+
 function when(iso?: string): string {
   if (!iso) return 'never scanned';
   const d = new Date(iso);
@@ -69,6 +84,7 @@ function TombstoneRow({
         </button>
       </div>
       <p className="text-sm mt-1.5 italic">&ldquo;{t.epitaph}&rdquo;</p>
+      {t.basis && <BasisLine basis={t.basis} />}
       {t.advisories.length > 0 && (
         <p className="text-xs text-muted mt-1">Known advisories: {t.advisories.join(', ')}</p>
       )}
@@ -197,6 +213,12 @@ export function GraveyardView({ graveyard, demo, loading, error, onRaise, onAskT
           />
         ))}
       </div>
+      <p className="text-xs text-muted mb-4" data-testid="basis-legend">
+        Each verdict says what it rests on. A <strong>hard signal</strong> is a fact from a source. A <strong>heuristic</strong> is a
+        guess from staleness and is labelled; treat it as a hint to look, not as proof.
+        {graveyard.projects.some((p) => p.heuristicCount > 0) &&
+          ` ${graveyard.projects.reduce((n, p) => n + p.heuristicCount, 0)} of the verdicts below are heuristic.`}
+      </p>
       {graveyard.projects.map((p, i) => (
         <ProjectCard key={p.id} p={p} startOpen={i === 0} onRaise={onRaise} />
       ))}

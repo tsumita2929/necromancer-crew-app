@@ -12,6 +12,8 @@ export interface Tombstone {
   epitaph: string;
   advisories: string[];
   successor?: Successor;
+  /** A fact from a source, or a guess from staleness. Absent when the engine did not say. */
+  basis?: 'hard' | 'heuristic';
 }
 
 export interface GraveyardProject {
@@ -24,6 +26,8 @@ export interface GraveyardProject {
   counts: Record<Verdict, number>;
   /** Non-alive dependencies, worst first, then by name. */
   tombstones: Tombstone[];
+  /** How many of the tombstones rest on the abandoned heuristic rather than a hard signal. */
+  heuristicCount: number;
   unavailable: string[];
 }
 
@@ -47,6 +51,7 @@ function tombstone(d: Diagnosis): Tombstone {
     epitaph: first ? first.message : `Marked ${d.verdict} with no recorded evidence.`,
     advisories: d.advisories,
     successor: d.successors[0],
+    ...(d.basis ? { basis: d.basis } : {}),
   };
 }
 
@@ -80,6 +85,7 @@ export function buildGraveyard(state: WatchState): Graveyard {
         baselineOnly: p.snapshot === undefined,
         counts,
         tombstones,
+        heuristicCount: tombstones.filter((t) => t.basis === 'heuristic').length,
         unavailable: (p.report?.unavailable ?? []).map((u) => u.source),
       };
     });

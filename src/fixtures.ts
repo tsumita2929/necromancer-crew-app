@@ -7,6 +7,8 @@ import type { Diagnosis, DependencyRef, Evidence, Successor, Verdict } from '@ne
  */
 export interface Fixture {
   verdict: Verdict;
+  /** A fact from a source (hard) or a guess from staleness (heuristic). */
+  basis: 'hard' | 'heuristic';
   evidence: Evidence[];
   advisories: string[];
   successors: Successor[];
@@ -18,6 +20,7 @@ const key = (ecosystem: string, name: string) => `${ecosystem}:${name}`;
 export const FIXTURES: Record<string, Fixture> = {
   [key('npm', 'left-pad')]: {
     verdict: 'dead',
+    basis: 'hard',
     evidence: [
       {
         code: 'npm-deprecated',
@@ -47,6 +50,7 @@ export const FIXTURES: Record<string, Fixture> = {
   },
   [key('npm', 'request')]: {
     verdict: 'zombie',
+    basis: 'hard',
     evidence: [
       {
         code: 'npm-deprecated',
@@ -82,6 +86,7 @@ export const FIXTURES: Record<string, Fixture> = {
   },
   [key('npm', 'moment')]: {
     verdict: 'dying',
+    basis: 'heuristic',
     evidence: [
       {
         code: 'maintenance-mode',
@@ -103,6 +108,7 @@ export const FIXTURES: Record<string, Fixture> = {
   },
   [key('npm', 'fixture-ghost-lib')]: {
     verdict: 'ghost',
+    basis: 'hard',
     evidence: [
       {
         code: 'repo-gone',
@@ -128,6 +134,7 @@ export const FIXTURES: Record<string, Fixture> = {
   },
   [key('pypi', 'nose')]: {
     verdict: 'dead',
+    basis: 'hard',
     evidence: [
       {
         code: 'project-inactive',
@@ -158,6 +165,7 @@ export function fixtureDiagnosis(dep: DependencyRef): Diagnosis {
   return {
     dependency: dep,
     verdict: f.verdict,
+    basis: f.basis,
     evidence: f.evidence.map((e) => ({ ...e })),
     advisories: [...f.advisories],
     successors: f.successors.map((s) => ({ ...s })),

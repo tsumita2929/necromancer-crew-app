@@ -150,3 +150,44 @@ describe('buildGraveyard (pure view model)', () => {
     expect(t.epitaph).toMatch(/no recorded evidence/);
   });
 });
+
+describe('basis on the page (item 1)', () => {
+  it('a heuristic verdict is labelled with a badge and in words; a hard one is labelled in words; the legend says how many are heuristic', async () => {
+    host.get = vi.fn(async () => ({ state: { version: 1, projects: {} }, problem: null }));
+    render(<App />);
+    await screen.findByTestId('demo-banner');
+    // The demo graveyard has `moment` (heuristic) and hard-signal tombstones.
+    const heuristic = [...document.querySelectorAll('[data-testid="basis-heuristic"]')];
+    const hard = [...document.querySelectorAll('[data-testid="basis-hard"]')];
+    expect(heuristic.length).toBeGreaterThan(0);
+    expect(hard.length).toBeGreaterThan(0);
+    for (const el of heuristic) {
+      expect(el.textContent).toContain('Heuristic');
+      expect(el.textContent).toContain('a guess from staleness');
+      expect(el.textContent).toContain('not a hard signal');
+      expect(el.querySelector('[data-variant="muted"]')?.textContent).toBe('Heuristic');
+    }
+    for (const el of hard) {
+      expect(el.textContent).toContain('Hard signal');
+      expect(el.querySelector('[data-variant]')).toBeNull();
+    }
+    expect(screen.getByTestId('basis-legend').textContent).toMatch(/1 of the verdicts below are heuristic/);
+  });
+
+  it('the view model counts heuristic tombstones and carries the basis of each', () => {
+    const projects = buildGraveyard(demoState()).projects;
+    const shop = projects.find((p) => p.id === 'demo-web-shop')!;
+    expect(shop.heuristicCount).toBe(1);
+    expect(shop.tombstones.find((t) => t.name === 'moment')?.basis).toBe('heuristic');
+    expect(shop.tombstones.find((t) => t.name === 'request')?.basis).toBe('hard');
+  });
+
+  it('a verdict whose basis the engine did not give carries no basis label (nothing is invented)', () => {
+    const state = demoState();
+    const p = Object.values(state.projects)[0]!;
+    for (const d of p.report!.diagnoses) delete (d as { basis?: string }).basis;
+    const view = buildGraveyard(state).projects.find((x) => x.id === p.id)!;
+    expect(view.tombstones.every((t) => t.basis === undefined)).toBe(true);
+    expect(view.heuristicCount).toBe(0);
+  });
+});

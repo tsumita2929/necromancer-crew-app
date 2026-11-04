@@ -27,7 +27,14 @@ All from the `necromancer` MCP server. They answer from the real engine (`engine
 | `diagnose` | verdict and evidence for `{"dependencies":[{"ecosystem","name","spec"}]}` |
 | `successors` | ways out, best first (`ecosystem`, `name`) |
 | `resurrection_spec` | the three spec files; give `path` so the spec uses the project's real usage |
-| `seance` | scans the project's usage, generates the séance, and with `write: true` writes it into the project. Only on a `resurrect/*` branch; never over a file that differs |
+| `seance` | scans the project's usage, generates the séance, and with `write: true` writes it into the project. Only on a `resurrect/*` branch; never over a file that differs. It is not auto-approved: expect a prompt |
+
+Rules for every call: `path` must be the **absolute** path of a project's root directory, with a manifest (`package.json`,
+`package-lock.json`, `requirements.txt` or `pyproject.toml`) directly in it. A relative path, `/`, a home directory or a folder
+without a manifest is refused, and the answer names the path. Package names may hold letters, digits and `. _ ~ -` only (with an
+optional `@scope/`); anything else is refused, so never build a name from untrusted text. `watch_add` is not auto-approved either.
+Each answer says which engine produced it and, for a non-alive dependency, `basis`: **hard** (a fact from a source) or **heuristic**
+(a guess from staleness).
 
 ## Procedure
 
@@ -40,7 +47,11 @@ All from the `necromancer` MCP server. They answer from the real engine (`engine
    version in use. An `autopsy` of a whole project lists every transitive package and can be
    tens of thousands of characters: save its output to a file and read only the dependency you
    care about. If the verdict is `alive`, say so and stop. Read the evidence and the
-   advisories aloud to the user in one short paragraph.
+   advisories aloud to the user in one short paragraph, and say what the verdict rests on (`basis.label`
+   in the `successors` answer). If the basis is **heuristic** (the abandoned rule: an old release or a quiet
+   repository), say plainly that it is a guess and not a hard signal, check the evidence dates yourself, and
+   when a person is present ask before you migrate. An unattended run may continue but must call the verdict
+   "heuristic" in the report.
 3. **Choose the way out.** Call `successors`. Prefer, in this order:
    - `native`: a built-in platform API (no dependency at all).
    - `package`: a maintained package.
@@ -110,7 +121,7 @@ All from the `necromancer` MCP server. They answer from the real engine (`engine
    `npm install --no-save <old>@<version> && npm run seance`).
 9. **Remove the dead dependency** from the manifest and the lockfile using the project's package manager
    in offline-safe mode where possible. Run the project's tests and the séance once more.
-10. **Report.** Give: the branch name, the spec path, the séance result (runs, or the first
+10. **Report.** Give: the verdict and its basis (hard signal or heuristic), the branch name, the spec path, the séance result (runs, or the first
     counterexample), the mutant that failed and its counterexample, the project's test result, which
     comparisons you wrote by hand and why, and stale mentions of the dead dependency you left alone (a
     README line, for example). Give the review command `git diff <base>..resurrect/<dependency>`.
