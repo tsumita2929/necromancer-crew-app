@@ -24,11 +24,11 @@ async function connect(note?: string) {
 }
 
 describe('MCP tools (R5)', () => {
-  it('R5.1 lists the nine tools, each with a description and an input schema', async () => {
+  it('R5.1 lists the ten tools, each with a description and an input schema', async () => {
     const { client } = await connect();
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual(
-      ['autopsy', 'diagnose', 'graveyard', 'nightwatch_run', 'resurrection_spec', 'successors', 'watch_add', 'watch_list', 'watch_remove'],
+      ['autopsy', 'diagnose', 'graveyard', 'nightwatch_run', 'resurrection_spec', 'seance', 'successors', 'watch_add', 'watch_list', 'watch_remove'],
     );
     for (const t of tools) {
       expect(t.description?.length).toBeGreaterThan(20);

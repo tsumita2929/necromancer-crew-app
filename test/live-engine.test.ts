@@ -7,6 +7,7 @@ import type { Engine, ManifestFile } from '@necromancer/engine';
 import { describe, expect, it } from 'vitest';
 import { selectEngine } from '../src/engine-port';
 import { readManifests } from '../src/manifests';
+import { blockHosts } from '../src/real-engine';
 import { runNightWatch } from '../src/nightwatch';
 import { Store } from '../src/store';
 import { createStubEngine } from '../src/stub-engine';
@@ -113,6 +114,22 @@ describe('R1.1/R1.3 engine selection', () => {
     const body = JSON.parse((r.content as Array<{ text: string }>)[0]!.text);
     expect(body.engine).toBe('stub');
     expect(body.note).toMatch(/cannot load engine bundle/);
+  });
+
+  it('NECROMANCER_BLOCK_HOSTS keeps a host out of reach without any network call, and lets the others through', async () => {
+    const seen: string[] = [];
+    const inner = (async (url: string) => {
+      seen.push(url);
+      return { ok: true, status: 200, json: async () => ({}), text: async () => '{}' };
+    }) as Parameters<typeof blockHosts>[0];
+    const guarded = blockHosts(inner, 'API.github.com, ,example.org');
+    const blocked = await guarded('https://api.github.com/repos/a/b');
+    expect(blocked.status).toBe(403);
+    expect(blocked.ok).toBe(false);
+    expect((await guarded('https://example.org/x')).status).toBe(403);
+    expect((await guarded('https://registry.npmjs.org/left-pad/latest')).status).toBe(200);
+    expect(seen).toEqual(['https://registry.npmjs.org/left-pad/latest']);
+    expect(blockHosts(inner, undefined)).toBe(inner);
   });
 
   it('R1.1 the default factory really builds the bundled engine', () => {
