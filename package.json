@@ -16,7 +16,9 @@
     "bundle:mcp": "node scripts/build-mcp.mjs",
     "bundle:ui": "npm --prefix ui run build",
     "bundle": "npm run bundle:mcp && npm run bundle:ui",
-    "build": "npm run bundle"
+    "build": "npm run bundle",
+    "export": "node scripts/export-repo.mjs",
+    "verify:export": "node scripts/verify-export.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.0",
