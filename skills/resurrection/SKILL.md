@@ -198,6 +198,12 @@ Each answer says which engine produced it and, for a non-alive dependency, `basi
          that file as a thin adapter over the project-owned module (`import mod from '../../src/vendor/<name>.js';`, then
          `export const READY = true;` and `export const members = { go: (...a) => mod.go(...a) };`). Do not delete it. The séance file needs no edit.
      The generated spec may name a `.ts` path; use the project's own language and say so in `design.md`.
+   - Always write the "Known behavioural differences" section of `design.md`, even when you accept none: say "none accepted" and
+     list the séance's `knownDifferences` the replacement reproduces. Two kinds of generated task need a sentence of judgement:
+     a task that asks for a check the generated séance does not make (for example "with the old package on both sides"): make
+     the check with a throwaway module that re-exports the old package, then tick the task and say so in `design.md`; a task that
+     asks for example tests or an attribution: write a small test file in the project's own test folder, and, for attribution, a
+     one-line credit comment (author and licence, read from the old package's `LICENSE` and `package.json`) at the top of the new module.
    - For each task in `tasks.md`: change one module, run the project's tests and the séance, tick the
      task, commit with a short imperative subject (`Replace left-pad with leftPad in src/receipt.js`).
      A sensible order of commits: the spec; the séance; the project-owned module together with the séance's import change and
@@ -215,12 +221,15 @@ Each answer says which engine produced it and, for a non-alive dependency, `basi
    - `codec.mjs`: turns `undefined`, `NaN`, `-0`, `Infinity` and holes into JSON and back.
    - `record.mjs`: **copies** the séance's generators word for word: everything between the last `import` line and the first
      `describe(` line of `seance.test.mjs` (that is the generators, and helpers such as `outcome` and `oldBug` that the recorder
-     needs), with a comment "copied from seance.test.mjs; keep in sync". Drop only a copied line that uses the replacement. The
+     needs), with a comment "copied from seance.test.mjs; keep in sync". Drop only a copied line that uses the replacement (that includes the lines you added in step 7, such as `const isOdd = mod.isOdd;`,
+     and the loader lines below). The template at the end of the skill shows one shape of `outcome`; use the séance's own `outcome`
+     (some take the function as their first argument) and its own generator names. The
      `naive` mutant and the `projectCalls` list may stay (use `projectCalls` and the bundle's `knownDifferences` inputs as the
      `known` list). If a copied line already loads the old package (`querystring` and `mkdirp` do), use it and do not import the
      package a second time. In a generic bundle, copy the member's `fc.tuple(...)`. The recorder writes `golden.json` for a fixed
      seed (a few thousand cases; keep the file under 1 MB). Values JSON cannot hold (`bigint`, `Symbol`, functions, objects with
-     `valueOf`) need a tag in `codec.mjs`: extend the codec, and say so in the report. If the séance also runs loops over a range
+     `valueOf`) need a tag in `codec.mjs`: extend the codec, and say so in the report. Do not rebuild a function with `eval`: encode a
+     function only when its source is a trivial constant (for example `() => 1`) and let the recorder throw for any other. If the séance also runs loops over a range
      (a window of integers), record those inputs too, or say in the report that the golden file does not cover them. It needs the
      old package: `npm install --no-save <old>@<version> && node seance/<name>/record.mjs`; if that version is already installed and
      there is no network, record from the installed copy and say so. Do not move the generators out of the séance and do not
@@ -233,7 +242,7 @@ Each answer says which engine produced it and, for a non-alive dependency, `basi
    `import` (or of the `createRequire` load, which throws when the package is absent), keep the séance's own name for it by adding
    one line after it (`const leftPadOld = old;` or `const isOddOld = old;`, whatever name the séance uses), and open the main
    `describe` as `describe.skipIf(!old)(...)`. Do not add a second `package.json` script (step 6 added `seance`).
-   Say in the report how to run the live comparison again (for example
+   After step 9, fix the sentences of `seance/<name>/README.md` that say the old package stays installed. Say in the report how to run the live comparison again (for example
    `npm install --no-save <old>@<version> && npm run seance`) and what the skipped count means.
 9. **Remove the dead dependency** from the manifest and the lockfile using the project's package manager
    in offline-safe mode where possible. Run the project's tests and the séance once more.

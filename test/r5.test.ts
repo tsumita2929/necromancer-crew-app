@@ -272,3 +272,22 @@ describe('QA-36: the skill matches every bundle shape', async () => {
     expect(skill).toContain('`createRequire` load');
   });
 });
+
+describe('QA-36 round two: gaps the second fresh agent still found are closed in the text', async () => {
+  const { readFileSync } = await import('node:fs');
+  const path = await import('node:path');
+  const skill = readFileSync(path.join(__dirname, '..', 'skills/resurrection/SKILL.md'), 'utf8');
+  it('known differences are always written; a check the séance does not make is made with a throwaway module', () => {
+    expect(skill).toMatch(/Always write the "Known behavioural differences" section/);
+    expect(skill).toMatch(/throwaway module that re-exports the old package/);
+    expect(skill).toMatch(/example tests or an attribution/);
+  });
+  it('the recorder drops the lines step 7 added, uses the séance\'s own outcome, and never uses eval', () => {
+    expect(skill).toMatch(/lines you added in step 7/);
+    expect(skill).toMatch(/use the séance's own `outcome`/);
+    expect(skill).toMatch(/Do not rebuild a function with `eval`/);
+  });
+  it('the séance README is fixed after the removal', () => {
+    expect(skill).toMatch(/After step 9, fix the sentences of `seance\/<name>\/README\.md`/);
+  });
+});
