@@ -7,7 +7,7 @@ import { buildGraveyard } from './graveyard';
 import { readManifests as defaultReadManifests, type ReadManifests } from './manifests';
 import { runNightWatch } from './nightwatch';
 import { readSourceFiles } from './project-files';
-import { SeanceError, summarizeUsage, writeBundle } from './seance-tool';
+import { SeanceError, cleanInstall, summarizeUsage, writeBundle } from './seance-tool';
 import { Store, StoreError } from './store';
 
 export interface ToolDeps {
@@ -268,6 +268,13 @@ export function createToolServer(deps: ToolDeps): McpServer {
         if (bundle.todos > 0 && !generic) {
           notes.push(`${bundle.todos} TODO(necromancer) marker(s) remain in the files. Resolve them.`);
         }
+        const cleaned = cleanInstall(bundle.install, args.name);
+        if (cleaned.note) notes.push(cleaned.note);
+        if (bundle.language === 'javascript') {
+          notes.push(
+            'The generated séance runs under Vitest, which needs Node 22.12 or newer. If the project supports older Node, say so in the report. If the project runs tests with node --test, keep the Vitest file out of that run (for example "test": "node --test test/*.test.js") and add a separate script ("seance": "vitest run seance").',
+          );
+        }
         const base = {
           ...tag,
           dependency: args.name,
@@ -278,7 +285,7 @@ export function createToolServer(deps: ToolDeps): McpServer {
           template: generic ? 'generic' : 'curated',
           comparisonsSkipped: generic,
           todos: bundle.todos,
-          install: bundle.install,
+          install: cleaned.install,
           run: bundle.run,
           compares: bundle.compares,
           members: bundle.members,

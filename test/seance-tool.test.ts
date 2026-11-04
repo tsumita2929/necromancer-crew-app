@@ -6,7 +6,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createEngine } from '@necromancer/engine';
 import type { Diagnosis, Engine, SeanceBundle, Successor, Verdict } from '@necromancer/engine';
 import { describe, expect, it } from 'vitest';
-import { isSafeBundlePath, writeBundle } from '../src/seance-tool';
+import { cleanInstall, isSafeBundlePath, writeBundle } from '../src/seance-tool';
 import { Store } from '../src/store';
 import { createStubEngine } from '../src/stub-engine';
 import { createToolServer } from '../src/tools';
@@ -87,6 +87,21 @@ describe('seance tool (live R-seance)', () => {
     expect(r.json.usage.warnings).toEqual([]);
     expect(r.json.files.map((f: any) => f.path).some((p: string) => p.endsWith('.mjs'))).toBe(true);
     expect(existsSync(path.join(dir, 'seance'))).toBe(false);
+  });
+
+  it('the install command does not move the dead dependency to devDependencies, and the notes mention the Vitest and node --test points', async () => {
+    const call = await connect(engineWith('dead', [PADSTART]));
+    const r = await call('seance', { ecosystem: 'npm', name: 'left-pad', path: repoOn('main') });
+    expect(r.json.install).toEqual(['npm install --save-dev vitest fast-check']);
+    const notes = r.json.notes.join(' ');
+    expect(notes).toMatch(/left-pad; it was left out|also names left-pad/);
+    expect(notes).toMatch(/Node 22\.12/);
+    expect(notes).toMatch(/node --test test\/\*\.test\.js/);
+  });
+
+  it('cleanInstall leaves other commands alone', () => {
+    expect(cleanInstall(['pip install hypothesis pytest toml'], 'toml')).toEqual({ install: ['pip install hypothesis pytest toml'] });
+    expect(cleanInstall(['npm install --save-dev vitest left-pad@1.3.0'], 'left-pad').install).toEqual(['npm install --save-dev vitest']);
   });
 
   it('write=true writes the bundle on a resurrect/ branch, and a second call changes nothing', async () => {
@@ -170,7 +185,8 @@ describe('seance tool (live R-seance)', () => {
     const r = await call('seance', { ecosystem: 'npm', name: 'left-pad', path: dir });
     expect(r.isError).toBe(false);
     expect(r.json.usage.notUsed).toBe(true);
-    expect(r.json.usage.warnings.join(' ')).toMatch(/No source file imports left-pad at run time/);
+    expect(r.json.usage.warnings.join(' ')).toMatch(/Stop here: no source file imports left-pad at run time/);
+    expect(r.json.usage.warnings.join(' ')).toMatch(/Do not remove it yourself and do not create a branch/);
   });
 
   it('a dependency imported but never called is flagged', async () => {

@@ -48,7 +48,9 @@ All from the `necromancer` MCP server. They answer from the real engine (`engine
      project owns, in `src/vendor/<name>` (or the language's equivalent).
    If `successors` is empty, no way out is known: take the `raise` path and say so. Tell the
    user which you chose and why. If two are plausible, ask.
-4. **Create the branch.** `git switch -c resurrect/<dependency>`.
+4. **Scan before you branch.** Call `seance` with `write` left out (it changes nothing) and read
+   `usage.warnings` (see "Warnings"). If one says to stop, stop here: no branch, no files. Otherwise
+   create the branch: `git switch -c resurrect/<dependency>`.
 5. **Write the Kiro spec.** Call `resurrection_spec` with the chosen successor and `path`
    (the project directory). Write the three files to `.kiro/specs/migrate-off-<dependency>/`:
    `requirements.md`, `design.md`, `tasks.md`. Then make the spec concrete: list the real files
@@ -60,10 +62,18 @@ All from the `necromancer` MCP server. They answer from the real engine (`engine
    - `template`: `curated` means the engine has a tested recipe for this pair; `generic` means it
      does not, and `comparisonsSkipped` is true (see "Generic template").
    - `knownDifferences`: what the old package, the naive swap and the generated replacement each
-     answer. Read them to the user in one short paragraph: they are why a plain swap is unsafe.
+     answer. Read them to the user in one short paragraph: they are why a plain swap is unsafe. (The
+     text may show one space where the real answer is several: trust the test, not the prose.)
+   - The séance file has a `projectCalls` list built from the scan. The scan only keeps calls whose
+     arguments are literals, so it can be empty even when the scan counted calls. Add the project's
+     real argument lists by hand and say so.
    Then:
    1. Run each command in `install` (it adds the test tooling as dev dependencies; say so in the
-      report) and then `run`. Copy the result line (tests passed, runs).
+      report) and then `run`. Copy the result line (tests passed, runs). Read the answer's `notes`: the
+      generated JavaScript séance runs under Vitest, which needs a recent Node. If the project's own test
+      script is `node --test`, it would pick up the Vitest file and fail; change the project's script to
+      name its own files (for example `"test": "node --test test/*.test.js"`; `node --test test/` fails on
+      Node 22) and add `"seance": "vitest run seance"`. Say both changes in the report.
    2. Commit the generated files on the branch: `Add séance for <dependency>`.
    3. **Prove it can fail.** Replace the body of the generated `replacement` file with the naive
       swap the bundle describes (for example `String(str).padStart(len, ch)`), run again, and copy the
@@ -78,8 +88,12 @@ All from the `necromancer` MCP server. They answer from the real engine (`engine
    and the choice changes what users see, ask. When the run is unattended, adopt the replacement
    that keeps the old answers unless the project's own tests need the successor's.
    - Put the replacement where the project's code can import it (`src/vendor/<name>.js` or the
-     language's equivalent, converted to the project's module format) and make the séance test **that**
-     file: change only the import line of the replacement in the séance. Never edit its comparisons.
+     language's equivalent) and make the séance test **that** file: change only the import line of the
+     replacement in the séance. Never edit its comparisons. The bundle's replacement is an ES module
+     (`replacement.mjs`); a CommonJS project needs the same function in CommonJS
+     (`module.exports = leftPad; module.exports.leftPad = leftPad;`), and the séance imports it with
+     `import mod from '../../src/vendor/<name>.js'`. The generated spec may name a `.ts` path; use the
+     project's own language and say so in `design.md`.
    - For each task in `tasks.md`: change one module, run the project's tests and the séance, tick the
      task, commit with a short imperative subject (`Replace left-pad with leftPad in src/receipt.js`).
      Use the repository's own commit identity. Never change git configuration: if the repository has
@@ -87,8 +101,9 @@ All from the `necromancer` MCP server. They answer from the real engine (`engine
      using `Necromancer (agent)` and `necromancer@agent.invalid`.
 8. **Keep a guard after the old package is gone.** The séance needs the old package as its oracle, and
    step 9 removes it. Before removing it, record the old package's answers for a fixed seed as a golden
-   file (JSON; use a codec for `undefined`, `NaN`, `-0`) and keep a replay test that checks the new code
-   against it. Keep the live old-versus-new comparison, but make it skip when the package is absent. Add
+   file (JSON; use a codec for `undefined`, `NaN`, `-0`, `Infinity`, holes) and keep a replay test that checks the new code
+   against it. This guard is written by hand; say so. Put it next to the séance (`seance/<name>/`) with
+   a recorder script, using the séance's own generators. Keep the live old-versus-new comparison, but make it skip when the package is absent. Add
    a `package.json` script for the séance (for example `"seance": "vitest run seance"`) next to the
    project's own test script, since the project's runner may not pick up the Vitest file. Say in the
    report how to run the live comparison again (for example
@@ -105,8 +120,8 @@ All from the `necromancer` MCP server. They answer from the real engine (`engine
 
 | Warning | What to do |
 |---|---|
-| `notUsed`: no file imports the dependency at run time | Look for a use the scan cannot see (a plugin loaded by name, a script, a config file). If there is none, tell the user the dependency is unused and that removing it is the fix; stop before migrating. |
-| `onlyInTests`: imported only in test files | Production code does not use it. Tell the user; migrate the tests or remove the dependency, then stop. Do not invent a production migration. |
+| `notUsed`: no file imports the dependency at run time | Look for a use the scan cannot see (a plugin loaded by name, a script, a config file). If there is none, stop before the branch: tell the user the dependency is unused, that removing it (`npm uninstall <name>`) is the fix, and that you did not remove it. Even when the user asked for a spec and a test, there is nothing to compare; say so. |
+| `onlyInTests`: imported only in test files | Production code does not use it. Tell the user; you may migrate the tests (a small commit on the branch with the spec) or recommend removing the dependency, then stop. Do not invent a production migration. Say that you can generate the séance anyway if the user wants it. |
 | `neverCalled`: imported, no call | There is nothing to compare. Say so and ask. |
 | `unreadable`: files could not be read | The calls in them are not in the séance's examples. Open each file by hand, list the calls, and add them as examples to the séance (the `projectCalls` list). |
 | computed dynamic imports | Look at them by hand and say which dependency they load. |

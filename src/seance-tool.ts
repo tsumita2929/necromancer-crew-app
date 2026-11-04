@@ -9,6 +9,36 @@ const execFileAsync = promisify(execFile);
 
 export class SeanceError extends Error {}
 
+/**
+ * The bundle's install commands list the old package among the dev dependencies the séance needs. Run as
+ * written, `npm install --save-dev ... <old>` would move the dead dependency from `dependencies` to
+ * `devDependencies` while the code still requires it. The old package is already installed (it is the
+ * project's dependency); the commands keep only the test tooling.
+ */
+export function cleanInstall(
+  commands: string[],
+  dependency: string,
+): { install: string[]; note?: string } {
+  const out: string[] = [];
+  let removed = false;
+  for (const cmd of commands) {
+    const m = /^(npm install --save-dev)\s+(.+)$/.exec(cmd.trim());
+    if (!m) {
+      out.push(cmd);
+      continue;
+    }
+    const kept = (m[2] ?? '').split(/\s+/).filter((t) => t !== dependency && !t.startsWith(`${dependency}@`));
+    if (kept.length !== (m[2] ?? '').split(/\s+/).length) removed = true;
+    if (kept.length > 0) out.push(`${m[1]} ${kept.join(' ')}`);
+  }
+  return removed
+    ? {
+        install: out,
+        note: `The bundle's own install command also names ${dependency}; it was left out so the dead dependency stays where the project declares it until you remove it. The séance's old-versus-new comparison needs ${dependency} installed (it is, while the project still depends on it).`,
+      }
+    : { install: out };
+}
+
 export interface UsageReport {
   filesScanned: number;
   filesUsing: string[];
@@ -38,7 +68,7 @@ export function summarizeUsage(usage: DependencyUsage, sources: ProjectSources):
   const warnings: string[] = [];
   if (notUsed) {
     warnings.push(
-      `No source file imports ${usage.name} at run time. The séance has only the template's generators. Check that the dependency is really used (a plugin loaded by name, a script, a config file); if it is unused, remove it from the manifest instead of migrating.`,
+      `Stop here: no source file imports ${usage.name} at run time, so there is no call to compare. First look for a use the scan cannot see (a plugin loaded by name, a script, a config file). If there is none, tell the user the dependency is unused and that removing it (for example npm uninstall ${usage.name}) is the fix. Do not remove it yourself and do not create a branch.`,
     );
   } else if (usage.neverCalled) {
     warnings.push(`${usage.name} is imported but no member is ever called, so there is no call to compare.`);
