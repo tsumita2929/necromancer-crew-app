@@ -177,7 +177,8 @@ describe('item 1: tool answers', () => {
 
   it('successors: alive, the upgrade, and no ways out to offer', async () => {
     const call = await connect(engineShaped({ upgradeTo: up('8.57.2') }));
-    const r = await call('successors', eslint);
+    const r = await call('successors', eslint); // the version in use is the "spec"
+    expect((await call('successors', { ecosystem: 'npm', name: 'eslint' })).json.verdict).toBe('alive');
     expect(r.json.verdict).toBe('alive');
     expect(r.json.upgrade.text).toBe('Upgrade to 8.57.2 (same major version).');
     expect(r.json.nothingToMigrate).toBeDefined();

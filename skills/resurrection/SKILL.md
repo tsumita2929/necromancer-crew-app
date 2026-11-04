@@ -67,7 +67,7 @@ Each answer says which engine produced it and, for a non-alive dependency, `basi
    repository), say plainly that it is a guess and not a hard signal, check the evidence dates yourself, and
    when a person is present ask before you migrate. An unattended run may continue but must call the verdict
    "heuristic" in the report.
-3. **Choose the way out.** Call `successors`. Prefer, in this order:
+3. **Choose the way out.** Call `successors` (give `spec`, the version in use, so a deprecated version shows as an upgrade). Prefer, in this order:
    - `native`: a built-in platform API (no dependency at all).
    - `package`: a maintained package.
    - `raise`: rebuild the small utility as a modern, dependency-free module the

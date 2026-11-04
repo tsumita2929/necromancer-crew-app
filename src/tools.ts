@@ -191,11 +191,11 @@ export function createToolServer(deps: ToolDeps): McpServer {
     'successors',
     {
       description:
-        'List the ways out for one dependency, best first (package, native or raise). A way out with isSuggestion=true is low confidence: offer it to the person, do not apply it unasked. A dependency with notFound=true has no verdict and no ways out; tell the person.',
-      inputSchema: { ecosystem, name },
+        'List the ways out for one dependency, best first (package, native or raise). A way out with isSuggestion=true is low confidence: offer it to the person, do not apply it unasked. A dependency with notFound=true has no verdict and no ways out; tell the person. Give "spec" (the version in use) so a deprecated or yanked version shows as an "upgrade" entry.',
+      inputSchema: { ecosystem, name, spec: specInput },
       annotations: { readOnlyHint: true },
     },
-    guard(async (args: { ecosystem: 'npm' | 'pypi'; name: string }) => {
+    guard(async (args: { ecosystem: 'npm' | 'pypi'; name: string; spec?: string }) => {
       const d = await diagnoseOne(args);
       const sum = summarize(d);
       const low = d.successors.filter(isLowConfidence).length;
