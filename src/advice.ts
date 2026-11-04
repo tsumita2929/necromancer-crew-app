@@ -9,7 +9,16 @@ export const BASIS_HEURISTIC = 'Heuristic: a guess from staleness (an old releas
 /** Whether a verdict rests on a hard signal or on the abandoned heuristic, in words. A not-found package has no verdict to rest on. */
 export function basisInfo(d: Diagnosis): { basis: 'hard' | 'heuristic' | null; label: string } {
   if (d.notFound) return { basis: null, label: NOT_FOUND_TEXT };
-  if (d.verdict === 'alive') return { basis: null, label: 'No blocking signal.' };
+  if (d.verdict === 'alive') {
+    const n = d.advisories.length;
+    return {
+      basis: null,
+      label:
+        n > 0
+          ? `The package is maintained (no blocking signal), but ${n} known ${n === 1 ? 'vulnerability affects' : 'vulnerabilities affect'} the version in use. Upgrade it; this is not a resurrection.`
+          : 'No blocking signal.',
+    };
+  }
   if (d.basis === 'heuristic') return { basis: 'heuristic', label: BASIS_HEURISTIC };
   if (d.basis === 'hard') return { basis: 'hard', label: BASIS_HARD };
   return { basis: null, label: 'The engine did not say whether this rests on a hard signal or a heuristic.' };

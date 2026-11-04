@@ -14,6 +14,7 @@ import { Store } from '../src/store';
 import { createToolServer } from '../src/tools';
 import { fakeManifests, project, reportFor, tmp } from './helpers';
 import { hauntedApp } from './paths';
+import { smallWorld, worldNow } from './small-world';
 import { recordedAt, recordedFetch } from './recorded-fetch';
 
 const hauntedSrc = path.join(hauntedApp, 'src');
@@ -213,6 +214,12 @@ describe('item 3: merged advisories show one id per vulnerability with the other
     expect((await call('successors', dep)).json.advisories).toEqual(expected);
     expect((await call('resurrection_spec', dep)).json.advisories).toEqual(expected);
     expect((await call('seance', { ...dep, path: repoOn('main') })).json.advisories).toEqual(expected);
+  });
+
+  it('an alive package with advisories says it is maintained but the version in use is affected', () => {
+    const d = { verdict: 'alive', advisories: ['A', 'B'], evidence: [], successors: [] } as unknown as Diagnosis;
+    expect(basisInfo(d).label).toMatch(/maintained.*2 known vulnerabilities affect the version in use/);
+    expect(basisInfo({ ...d, advisories: [] } as Diagnosis).label).toBe('No blocking signal.');
   });
 
   it('advisoryText reads "id (also ...)" and cuts a long list', () => {
@@ -442,5 +449,49 @@ describe('Night Watch: notFound', () => {
     await run(store, engine);
     expect((await store.load()).projects[p.id]!.snapshot).toEqual({ 'npm:a': 'dead' });
     expect((await run(store, engine)).notifications).toEqual([]);
+  });
+});
+
+describe('the real engine through the tools, on a made-up registry (no network)', () => {
+  const engine = () => createEngine({ fetch: smallWorld, now: () => worldNow }, { sleep: async () => {} });
+
+  it('an unknown package is notFound; a moved repository carries repo-moved; two records of one vulnerability are one entry', async () => {
+    const { call } = await connect(engine());
+    const r = await call('diagnose', {
+      dependencies: [
+        { ecosystem: 'npm', name: 'no-such-pkg-zz', spec: '1.0.0' },
+        { ecosystem: 'npm', name: 'moved-lib', spec: '1.0.0' },
+        { ecosystem: 'npm', name: 'merge-lib', spec: '1.0.0' },
+      ],
+    });
+    const [gone, moved, merged] = r.json.summaries;
+    expect(gone.notFound).toBe(true);
+    expect(gone.verdict).toBe('alive');
+    expect(moved.moved.message).toMatch(/moved|renamed/);
+    expect(moved.verdict).not.toBe('dead');
+    expect(merged.advisories).toHaveLength(1);
+    expect(merged.advisories[0].also.sort()).toEqual(expect.arrayContaining(['CVE-2020-0001']));
+  });
+
+  it('the page view model of that scan counts the unknown package apart and keeps the moved one a notice', async () => {
+    const eng = engine();
+    const report = await eng.autopsy({
+      subject: 'local:/work/x',
+      files: [{ kind: 'package.json', path: 'package.json', content: JSON.stringify({ dependencies: { 'no-such-pkg-zz': '1.0.0', 'moved-lib': '1.0.0' } }) }],
+    });
+    const state: WatchState = { version: 1, projects: { p: { id: 'p', path: '/work/x', addedAt: '2026-11-01T00:00:00Z', status: 'ok', snapshot: {}, report } } };
+    const p = buildGraveyard(state).projects[0]!;
+    expect(p.notFound).toBe(1);
+    expect(p.tombstones.find((t) => t.name === 'no-such-pkg-zz')?.kind).toBe('not-found');
+    expect(p.tombstones.find((t) => t.name === 'moved-lib')?.moved).toBeTruthy();
+    expect(p.counts.alive).toBe(1);
+  });
+
+  it('a project of unknown packages only: autopsy through the tool still answers', async () => {
+    const { call } = await connect(engine());
+    const dir = project({ 'package.json': '{"dependencies":{"no-such-a":"1.0.0","no-such-b":"1.0.0"}}' });
+    const r = await call('autopsy', { path: dir });
+    expect(r.isError).toBe(false);
+    expect(r.json.report.diagnoses.every((d: any) => d.notFound === true)).toBe(true);
   });
 });
