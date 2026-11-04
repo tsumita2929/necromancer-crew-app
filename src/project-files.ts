@@ -98,3 +98,23 @@ export async function readSourceFiles(root: string): Promise<ProjectSources> {
   await walk(root, 0);
   return { files, unreadable, notes };
 }
+
+/**
+ * The project's own test runner, read from the `scripts.test` entry of its package.json (for example "vitest run" or
+ * "node --test test/*.test.js"). Returns the name of a known runner found in the command, or the whole command when none
+ * is recognised; undefined when there is no package.json, no `scripts.test`, or only npm's placeholder. Never throws.
+ */
+export async function readTestRunner(root: string): Promise<string | undefined> {
+  try {
+    const raw = await fs.readFile(path.join(root, 'package.json'), 'utf8');
+    const doc = JSON.parse(raw) as { scripts?: Record<string, unknown> };
+    const test = doc?.scripts?.test;
+    if (typeof test !== 'string' || test.trim() === '') return undefined;
+    const command = test.trim().replace(/\s+/g, ' ').slice(0, 120);
+    if (/^echo\b.*no test specified/i.test(command)) return undefined;
+    const known = /\b(vitest|jest|mocha|ava|tap|jasmine|playwright|cypress|node --test|node:test|uvu|pytest|unittest)\b/i.exec(command);
+    return known ? known[1]!.toLowerCase() : command;
+  } catch {
+    return undefined;
+  }
+}

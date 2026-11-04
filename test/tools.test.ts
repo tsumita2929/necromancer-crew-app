@@ -130,7 +130,7 @@ describe('MCP tools (R5)', () => {
     const { call } = await connect();
     const r = await call('autopsy', { path: project({ 'README.md': 'x' }) });
     expect(r.isError).toBe(true);
-    expect(r.text).toMatch(/No manifest/);
+    expect(r.text).toMatch(/none of package\.json, package-lock\.json, requirements\.txt, pyproject\.toml directly in it/);
   });
 
   it('R5.2 autopsy reads a local directory and returns a report with a summary', async () => {

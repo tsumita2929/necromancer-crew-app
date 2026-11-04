@@ -15,7 +15,7 @@
     "check": "npm run typecheck && npm test",
     "bundle:mcp": "node scripts/build-mcp.mjs",
     "bundle:ui": "npm --prefix ui run build",
-    "bundle": "npm run bundle:mcp && npm run bundle:ui",
+    "bundle": "npm run bundle:mcp && npm run bundle:ui && node scripts/check-bundles.mjs",
     "build": "npm run bundle",
     "export": "node scripts/export-repo.mjs",
     "verify:export": "node scripts/verify-export.mjs"

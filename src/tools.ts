@@ -1,12 +1,12 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { DependencyRef, Diagnosis, Successor } from '@necromancer/engine';
-import { realpath, stat } from 'node:fs/promises';
 import { z } from 'zod';
 import type { EnginePort } from './engine-port';
 import { buildGraveyard } from './graveyard';
 import { readManifests as defaultReadManifests, type ReadManifests } from './manifests';
 import { runNightWatch } from './nightwatch';
-import { readSourceFiles } from './project-files';
+import { GuardError, assertSafeName, resolveProjectDir } from './project-guard';
+import { readSourceFiles, readTestRunner } from './project-files';
 import { SeanceError, cleanInstall, summarizeUsage, writeBundle } from './seance-tool';
 import { Store, StoreError } from './store';
 
@@ -35,7 +35,12 @@ function guard<A>(fn: (args: A) => Promise<unknown>): (args: A) => Promise<ToolR
     try {
       return ok(await fn(args));
     } catch (err) {
-      if (err instanceof ToolInputError || err instanceof StoreError || err instanceof SeanceError) {
+      if (
+        err instanceof ToolInputError ||
+        err instanceof StoreError ||
+        err instanceof SeanceError ||
+        err instanceof GuardError
+      ) {
         return fail(err.message);
       }
       return fail(`Unexpected error: ${(err as Error).message}`);
@@ -44,7 +49,18 @@ function guard<A>(fn: (args: A) => Promise<unknown>): (args: A) => Promise<ToolR
 }
 
 const ecosystem = z.enum(['npm', 'pypi']).describe('Package ecosystem.');
-const name = z.string().min(1).max(214).describe('Package name as published.');
+const name = z
+  .string()
+  .min(1)
+  .max(214)
+  .superRefine((value, ctx) => {
+    try {
+      assertSafeName(value);
+    } catch (err) {
+      ctx.addIssue({ code: 'custom', message: (err as Error).message });
+    }
+  })
+  .describe('Package name as published (letters, digits and . _ ~ - only, with an optional @scope/).');
 
 const depInput = z.object({
   ecosystem,
@@ -61,6 +77,21 @@ function toRef(d: z.infer<typeof depInput>): DependencyRef {
     scope: 'main',
     declaredIn: 'tool-input',
   };
+}
+
+/** Whether a verdict rests on a hard signal or on the abandoned heuristic, in words. */
+export function basisInfo(d: Diagnosis): { basis: 'hard' | 'heuristic' | null; label: string } {
+  if (d.verdict === 'alive') return { basis: null, label: 'No blocking signal.' };
+  if (d.basis === 'heuristic') {
+    return {
+      basis: 'heuristic',
+      label: 'Heuristic: a guess from staleness (an old release or a quiet repository), not a hard signal.',
+    };
+  }
+  if (d.basis === 'hard') {
+    return { basis: 'hard', label: 'Hard signal: a fact from a source (deprecated, archived, advisory, yanked, gone).' };
+  }
+  return { basis: null, label: 'The engine did not say whether this rests on a hard signal or a heuristic.' };
 }
 
 export function createToolServer(deps: ToolDeps): McpServer {
@@ -100,14 +131,25 @@ export function createToolServer(deps: ToolDeps): McpServer {
         throw new ToolInputError('Give exactly one of "path" or "files".');
       }
       if (args.path !== undefined) {
-        const read = await readManifests(args.path);
+        const project = await resolveProjectDir(args.path);
+        const read = await readManifests(project.real);
         if (read.files.length === 0) {
           throw new ToolInputError(
-            read.problems.length > 0 ? read.problems.join(' ') : `No manifest found in ${args.path}.`,
+            read.problems.length > 0 ? read.problems.join(' ') : `No manifest could be read in ${project.real}.`,
           );
         }
-        const report = await engine.engine.autopsy({ subject: `local:${args.path}`, files: read.files });
-        return { ...tag, report };
+        const report = await engine.engine.autopsy({ subject: `local:${project.real}`, files: read.files });
+        return {
+          ...tag,
+          read: {
+            directory: project.real,
+            ...(project.real !== project.given ? { given: project.given } : {}),
+            manifests: read.files.map((f) => f.path),
+            skipped: read.problems,
+            limits: 'manifests up to 3 levels deep, at most 40 files, 2 MB each; node_modules, .git, dist and virtual environments are skipped; symbolic links are not followed',
+          },
+          report,
+        };
       }
       const report = await engine.engine.autopsy({ subject: 'upload', files: args.files ?? [] });
       return { ...tag, report };
@@ -136,7 +178,7 @@ export function createToolServer(deps: ToolDeps): McpServer {
     },
     guard(async (args: { ecosystem: 'npm' | 'pypi'; name: string }) => {
       const d = await diagnoseOne(args);
-      return { ...tag, verdict: d.verdict, successors: d.successors };
+      return { ...tag, verdict: d.verdict, basis: basisInfo(d), successors: d.successors };
     }),
   );
 
@@ -184,16 +226,11 @@ export function createToolServer(deps: ToolDeps): McpServer {
         `The ${engine.name} engine cannot scan usage or generate a séance${engine.note ? ` (${engine.note})` : ''}. Write the comparison by hand.`,
       );
     }
-    let real: string;
-    try {
-      real = await realpath(dir);
-      if (!(await stat(real)).isDirectory()) throw new Error('not a directory');
-    } catch {
-      throw new ToolInputError(`${dir} does not exist or is not a directory.`);
-    }
+    const project = await resolveProjectDir(dir);
+    const real = project.real;
     const sources = await readSourceFiles(real);
     const usage = eng.scanUsage(sources.files, target);
-    return { root: real, sources, usage };
+    return { root: real, sources, usage, project };
   }
 
   server.registerTool(
@@ -213,15 +250,18 @@ export function createToolServer(deps: ToolDeps): McpServer {
       const d = await diagnoseOne(args);
       const chosen = chooseSuccessor(d, args);
       if (args.path !== undefined) {
-        const { usage, sources } = await scanProject(args.path, { ecosystem: args.ecosystem, name: args.name });
+        const { usage, sources, root } = await scanProject(args.path, { ecosystem: args.ecosystem, name: args.name });
+        const testRunner = await readTestRunner(root);
         return {
           ...tag,
+          basis: basisInfo(d),
           successor: chosen,
           usage: summarizeUsage(usage, sources),
-          spec: engine.engine.resurrectionSpec(d, chosen, { usage }),
+          project: { testRunner: testRunner ?? null },
+          spec: engine.engine.resurrectionSpec(d, chosen, { usage, project: testRunner ? { testRunner } : {} }),
         };
       }
-      return { ...tag, successor: chosen, spec: engine.engine.resurrectionSpec(d, chosen) };
+      return { ...tag, basis: basisInfo(d), successor: chosen, spec: engine.engine.resurrectionSpec(d, chosen) };
     }),
   );
 
@@ -279,6 +319,7 @@ export function createToolServer(deps: ToolDeps): McpServer {
           ...tag,
           dependency: args.name,
           verdict: d.verdict,
+          basis: basisInfo(d),
           successor: chosen,
           language: bundle.language,
           recipe: bundle.recipe,
@@ -311,12 +352,14 @@ export function createToolServer(deps: ToolDeps): McpServer {
   server.registerTool(
     'watch_add',
     {
-      description: 'Add a local project directory to the Night Watch list.',
+      description:
+        'Add a local project directory to the Night Watch list. The path must be absolute and hold a manifest (package.json, package-lock.json, requirements.txt or pyproject.toml); the filesystem root and home directories are refused.',
       inputSchema: { path: z.string().min(1).describe('Absolute path of an existing directory.') },
     },
     guard(async (args: { path: string }) => {
-      const { project, added } = await store.addProject(args.path);
-      return { added, id: project.id, path: project.path };
+      const dir = await resolveProjectDir(args.path);
+      const { project, added } = await store.addProject(dir.real);
+      return { added, id: project.id, path: project.path, manifests: dir.manifests };
     }),
   );
 

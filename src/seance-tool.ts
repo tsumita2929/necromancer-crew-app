@@ -4,6 +4,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import type { DependencyUsage, SeanceBundle } from '@necromancer/engine';
 import { isTestPath, type ProjectSources } from './project-files';
+import { shellQuote } from './project-guard';
 
 const execFileAsync = promisify(execFile);
 
@@ -68,7 +69,7 @@ export function summarizeUsage(usage: DependencyUsage, sources: ProjectSources):
   const warnings: string[] = [];
   if (notUsed) {
     warnings.push(
-      `Stop here: no source file imports ${usage.name} at run time, so there is no call to compare. First look for a use the scan cannot see (a plugin loaded by name, a script, a config file). If there is none, tell the user the dependency is unused and that removing it (for example npm uninstall ${usage.name}) is the fix. Do not remove it yourself and do not create a branch.`,
+      `Stop here: no source file imports ${usage.name} at run time, so there is no call to compare. First look for a use the scan cannot see (a plugin loaded by name, a script, a config file). If there is none, tell the user the dependency is unused and that removing it (for example npm uninstall ${shellQuote(usage.name)}) is the fix. Do not remove it yourself and do not create a branch.`,
     );
   } else if (usage.neverCalled) {
     warnings.push(`${usage.name} is imported but no member is ever called, so there is no call to compare.`);

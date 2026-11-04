@@ -83,6 +83,11 @@ export class Store {
     if (typeof input !== 'string' || input.trim() === '') {
       throw new StoreError('A project path is required.');
     }
+    if (!path.isAbsolute(input)) {
+      throw new StoreError(
+        `The path ${JSON.stringify(input.slice(0, 200))} is relative. Give the absolute path; a relative path is not resolved against the server's working directory.`,
+      );
+    }
     const resolved = path.resolve(input);
     let real: string;
     try {
