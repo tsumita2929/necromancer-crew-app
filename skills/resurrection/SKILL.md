@@ -18,6 +18,7 @@ button both lead here.
 - Never run code from the dead package's install scripts. Read it as text.
 - Never claim the migration is done while the séance fails.
 - Never migrate a package the registry does not know (`notFound: true`). Tell the person; see step 2.
+- Never migrate or raise a living package because its **version** is deprecated or yanked (an `upgrade` entry on an `alive` verdict). Tell the person to upgrade; see step 2.
 - Never use a low-confidence way out (`isSuggestion: true`, `needsConfirmation: true`) without asking the person first.
 
 ## The tools
@@ -30,6 +31,7 @@ All from the `necromancer` MCP server. They answer from the real engine (`engine
 | `successors` | ways out, best first (`ecosystem`, `name`) |
 | `resurrection_spec` | the three spec files; give `path` so the spec uses the project's real usage |
 | `seance` | **preview**: scans the project's usage and returns the séance files, commands and warnings. Read-only; it never writes. Auto-approved |
+| `diagnose` / `successors` | also carry an `upgrade` entry for a living package whose version in use is deprecated or yanked: upgrade it, never migrate it |
 | `seance_write` | **write**: puts the séance files into the project. Only on a `resurrect/*` branch; never over a file that differs; refuses a low-confidence way out unless `acceptLowConfidence: true`. Not auto-approved: expect a prompt |
 
 Rules for every call: `path` must be the **absolute** path of a project's root directory, with a manifest (`package.json`,
@@ -51,7 +53,13 @@ Each answer says which engine produced it and, for a non-alive dependency, `basi
    tens of thousands of characters: save its output to a file and read only the dependency you
    care about. If `notFound` is true, stop: the package is **not found on the registry (removed, private or
    misspelled)**. That is not "alive" and it was not checked. Do not create a branch, a spec or a séance. Tell the
-   person, and ask them to check the name and where the package comes from. If the verdict is `alive`, say so and stop. Read the evidence and the
+   person, and ask them to check the name and where the package comes from. If the verdict is `alive` and the answer has an `upgrade` entry, the package is maintained and only
+   the version in use is deprecated (npm) or yanked (PyPI). It is **not** dying and **not** a resurrection. Say
+   the engine's sentence as it is ("Upgrade to 10.14.0 (another major version)."; a target in another major
+   version is a bigger step, so say so; if `older` is true the only safe target is older than the version in use,
+   and the sentence says why). Offer the upgrade (change the version, run the project's tests) and stop: no
+   branch, no spec, no séance, no "raise". If the same entry has advisories, say both. If the verdict is `alive`
+   with no `upgrade` entry, say so and stop. Read the evidence and the
    advisories aloud (the answer lists one entry per vulnerability with its other ids in `also`; say the
    vulnerability once, not once per id; a `moved` note means the repository was renamed or moved, which
    is not an end of life, so follow it and do not call the package abandoned for that) to the user in one short paragraph, and say what the verdict rests on (`basis.label`
@@ -84,6 +92,12 @@ Each answer says which engine produced it and, for a non-alive dependency, `basi
    - `usage.warnings`: act on each one (see "Warnings").
    - `template`: `curated` means the engine has a tested recipe for this pair; `generic` means it
      does not, and `comparisonsSkipped` is true (see "Generic template").
+   - `versions` (and `versionNotTested`): which versions of the old package this séance was run against, and
+     whether the version in use is one of them. If `versionNotTested` is true, **tell the person** in one
+     sentence (use `versions.note`): the séance may fail, or pass, for reasons that are not the replacement's
+     on that version, so read it before you trust it. If `versions.doesNotFit` names the version in use, the
+     séance was run on it and did not fit; say why. In an unattended run, put the same sentence in the report.
+     The generic template was run against no version; say that too.
    - `knownDifferences`: what the old package, the naive swap and the generated replacement each
      answer. Read them to the user in one short paragraph: they are why a plain swap is unsafe. (The
      text may show one space where the real answer is several: trust the test, not the prose.)

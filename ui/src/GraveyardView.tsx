@@ -83,6 +83,12 @@ function TombstoneRow({
         ) : (
           <VerdictBadge verdict={t.verdict} />
         )}
+        {t.upgrade && (
+          <Badge variant="aim" title="The version in use is deprecated or yanked; the package itself is maintained">
+            <span aria-hidden="true">↑</span>
+            <span>Upgrade</span>
+          </Badge>
+        )}
         <span className="font-mono text-sm font-semibold">{t.name}</span>
         {t.spec && <span className="font-mono text-xs text-muted">{t.spec}</span>}
         <span className="text-xs text-muted">{t.ecosystem}</span>
@@ -102,6 +108,11 @@ function TombstoneRow({
       {t.kind === 'not-found' && (
         <p className="text-xs text-muted mt-1" data-testid="not-found-note">
           Nothing to migrate: check the name, or whether the package is private. It is not counted as alive.
+        </p>
+      )}
+      {t.upgrade && (
+        <p className="text-xs text-muted mt-1" data-testid="upgrade-note">
+          The version in use is {t.upgrade.kind}; the package is still maintained. {t.upgrade.text} Nothing to migrate.
         </p>
       )}
       {t.basis && <BasisLine basis={t.basis} />}

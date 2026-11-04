@@ -19,6 +19,8 @@ export interface WatchedProject {
   snapshot?: Snapshot;
   /** Dependencies ("npm:name") the registry did not know at the last scan. */
   notFound?: string[];
+  /** Dependencies ("npm:name") that carried an upgrade notice at the last scan. Absent in state files from before the notice existed. */
+  upgrades?: string[];
   /** The last report, rendered by the Graveyard page. */
   report?: AutopsyReport;
 }

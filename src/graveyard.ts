@@ -1,5 +1,5 @@
 import type { Diagnosis, Successor, Verdict } from '@necromancer/engine';
-import { advisoryList, describeSuccessor, isLowConfidence, movedNote, NOT_FOUND_TEXT } from './advice';
+import { advisoryList, describeSuccessor, isLowConfidence, movedNote, NOT_FOUND_TEXT, upgradeNotice, type UpgradeNotice } from './advice';
 import type { WatchState, WatchedProject } from './state';
 import { depKey, rank } from './verdict';
 
@@ -12,7 +12,8 @@ export interface Tombstone {
   /**
    * - verdict:   a non-alive dependency;
    * - not-found: the registry does not know the package (never counted as alive);
-   * - notice:    a maintained package with something to know (advisories, or a moved repository).
+   * - notice:    a maintained package with something to know (advisories, a moved repository, or a
+   *             deprecated or yanked version in use: an upgrade notice, never a death).
    */
   kind: 'verdict' | 'not-found' | 'notice';
   /** First evidence message, or a fallback so the line is never empty. */
@@ -28,6 +29,8 @@ export interface Tombstone {
   successorAdvice?: string;
   /** The repository moved: not an end of life. */
   moved?: string;
+  /** The version in use is deprecated or yanked; the package is alive. Say where to upgrade to. */
+  upgrade?: UpgradeNotice;
   /** A fact from a source, or a guess from staleness. Absent when the engine did not say. */
   basis?: 'hard' | 'heuristic';
 }
@@ -66,6 +69,7 @@ function tombstone(d: Diagnosis, kind: Tombstone['kind']): Tombstone {
   const best = d.successors[0];
   const moved = movedNote(d);
   const list = advisoryList(d);
+  const upgrade = upgradeNotice(d);
   const epitaph =
     kind === 'not-found'
       ? NOT_FOUND_TEXT
@@ -73,6 +77,7 @@ function tombstone(d: Diagnosis, kind: Tombstone['kind']): Tombstone {
         ? [
             list.length > 0 ? `Maintained, but ${list.length} known ${list.length === 1 ? 'vulnerability affects' : 'vulnerabilities affect'} the version in use.` : '',
             moved ? 'The repository moved; that is not an end of life.' : '',
+            upgrade ? `The package is maintained, but the version in use is ${upgrade.kind}. ${upgrade.text}` : '',
           ]
             .filter(Boolean)
             .join(' ')
@@ -91,6 +96,7 @@ function tombstone(d: Diagnosis, kind: Tombstone['kind']): Tombstone {
     advisoryList: list,
     ...(best ? { successor: best, suggestion: isLowConfidence(best), successorAdvice: describeSuccessor(best).advice } : {}),
     ...(moved ? { moved: moved.message } : {}),
+    ...(upgrade && kind === 'notice' ? { upgrade } : {}),
     ...(d.basis && kind === 'verdict' ? { basis: d.basis } : {}),
   };
 }
@@ -129,7 +135,7 @@ export function buildGraveyard(state: WatchState): Graveyard {
         .sort((a, b) => rank(b.verdict) - rank(a.verdict) || byName(a, b));
       const notFounds = all.filter((d) => d.notFound).map((d) => tombstone(d, 'not-found')).sort(byName);
       const notices = all
-        .filter((d) => !d.notFound && d.verdict === 'alive' && (d.advisories.length > 0 || movedNote(d)))
+        .filter((d) => !d.notFound && d.verdict === 'alive' && (d.advisories.length > 0 || movedNote(d) || upgradeNotice(d)))
         .map((d) => tombstone(d, 'notice'))
         .sort(byName);
       const tombstones = [...verdicts, ...notFounds, ...notices];

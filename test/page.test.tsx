@@ -273,3 +273,68 @@ describe('notFound, confidence, merged advisories and moved repositories on the 
     expect(screen.getAllByTestId('stat')[0]?.textContent).toBe('✓ Alive 1');
   });
 });
+
+describe('the upgrade notice on the page (round 4c)', () => {
+  const dep = (name: string, verdict: string, extra: Record<string, unknown> = {}) => ({
+    dependency: { ecosystem: 'npm', name, spec: '8.57.1', direct: true, scope: 'main', declaredIn: 'package.json' },
+    verdict,
+    evidence: [],
+    advisories: [],
+    successors: [],
+    ...extra,
+  });
+  const deprecated = { code: 'version-deprecated', message: 'The version in use (8.57.1) is deprecated.', source: 'npm' };
+  async function show(diagnoses: unknown[]) {
+    const state = {
+      version: 1,
+      projects: {
+        p1: {
+          id: 'p1',
+          path: '/work/p1',
+          addedAt: '2026-11-01T00:00:00Z',
+          status: 'ok',
+          snapshot: {},
+          report: { subject: 'x', scannedAt: '2026-11-03T00:00:00Z', manifests: [], diagnoses, problems: [], unavailable: [], summary: {} },
+        },
+      },
+    } as unknown as WatchState;
+    host.get = vi.fn(async () => ({ state, problem: null }));
+    render(<App />);
+    return screen.findByTestId('project');
+  }
+
+  it('an alive package with a deprecated version shows an Upgrade badge and the target, is counted alive, and has no raise button', async () => {
+    const project = await show([dep('eslint', 'alive', { evidence: [deprecated], upgradeTo: { version: '10.14.0', sameMajor: false } })]);
+    const row = within(project).getByTestId('tombstone');
+    expect(row.getAttribute('data-kind')).toBe('notice');
+    expect(row.textContent).toContain('Upgrade');
+    const note = within(row).getByTestId('upgrade-note').textContent!;
+    expect(note).toContain('Upgrade to 10.14.0 (another major version).');
+    expect(note).toMatch(/deprecated; the package is still maintained/);
+    expect(note).toContain('Nothing to migrate');
+    expect(within(row).queryByRole('button')).toBeNull();
+    expect(within(row).queryByText(/Dying/)).toBeNull();
+    const totals = screen.getAllByTestId('stat').map((s) => s.textContent);
+    expect(totals).toEqual(['✓ Alive 1', '◐ Dying 0', '✝ Dead 0', '◌ Ghost 0', '☣ Zombie 0', '? Not found 0']);
+  });
+
+  it('an older target and a yanked version read in words', async () => {
+    const yanked = { code: 'version-yanked', message: 'yanked', source: 'pypi' };
+    const project = await show([
+      dep('codemirror', 'alive', { evidence: [deprecated], upgradeTo: { version: '6.0.2', sameMajor: true, older: true } }),
+      dep('flask', 'alive', { evidence: [yanked], upgradeTo: { version: '2.0.1', sameMajor: true } }),
+    ]);
+    const notes = within(project).getAllByTestId('upgrade-note').map((n) => n.textContent!);
+    expect(notes.some((n) => /Use 6\.0\.2 .*older than the version in use/.test(n))).toBe(true);
+    expect(notes.some((n) => /is yanked; the package is still maintained\. Upgrade to 2\.0\.1/.test(n))).toBe(true);
+  });
+
+  it('an upgrade notice with an advisory shows both lines on one row', async () => {
+    const project = await show([
+      dep('glob', 'alive', { evidence: [deprecated], upgradeTo: { version: '14.0.3', sameMajor: false }, advisories: ['GHSA-1'], advisoryAliases: { 'GHSA-1': ['CVE-1'] } }),
+    ]);
+    const row = within(project).getByTestId('tombstone');
+    expect(within(row).getByTestId('upgrade-note').textContent).toContain('Upgrade to 14.0.3');
+    expect(within(row).getByTestId('advisories').textContent).toContain('GHSA-1 (also CVE-1)');
+  });
+});

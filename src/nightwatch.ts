@@ -3,7 +3,7 @@ import type { AutopsyReport, Diagnosis, Engine, SourceId, Verdict } from '@necro
 import type { ReadManifests } from './manifests';
 import type { Snapshot, WatchedProject } from './state';
 import type { Store } from './store';
-import { NOT_FOUND_TEXT } from './advice';
+import { NOT_FOUND_TEXT, upgradeNotice } from './advice';
 import { depKey, rank, worse } from './verdict';
 
 export interface Worsened {
@@ -50,7 +50,7 @@ export function snapshotOf(report: AutopsyReport): Snapshot {
 }
 
 export interface Notification {
-  kind: 'worse' | 'project-missing' | 'not-found';
+  kind: 'worse' | 'project-missing' | 'not-found' | 'upgrade';
   projectId: string;
   title: string;
   body: string;
@@ -63,6 +63,8 @@ export interface ProjectResult {
   worsened: number;
   /** Dependencies the registry does not know in this scan. They are never counted as alive. */
   notFound?: number;
+  /** Dependencies with an upgrade notice (a deprecated or yanked version in use) in this scan. */
+  upgrades?: number;
   unavailable: SourceId[];
   message?: string;
 }
@@ -211,6 +213,32 @@ async function scanOne(
     });
   }
 
+  // A version that became deprecated or yanked, on a package that is alive: an upgrade notice, once.
+  // A state file from before this notice existed has no list: that run only records it.
+  const noticeOf = new Map<string, ReturnType<typeof upgradeNotice>>();
+  for (const d of report.diagnoses) {
+    const notice = upgradeNotice(d);
+    if (notice) noticeOf.set(depKey(d.dependency), notice);
+  }
+  const upgradeKeys = [...noticeOf.keys()].sort();
+  const knownUpgrades = new Set(watched.upgrades ?? []);
+  const newlyUpgrade =
+    watched.snapshot === undefined || watched.upgrades === undefined
+      ? []
+      : upgradeKeys.filter((k) => !knownUpgrades.has(k));
+  for (const k of newlyUpgrade) {
+    const name = k.slice(k.indexOf(':') + 1);
+    const notice = noticeOf.get(k)!;
+    notifications.push({
+      kind: 'upgrade',
+      projectId: watched.id,
+      title: notice.version ? `${name}: the version in use is ${notice.kind}, upgrade to ${notice.version}` : `${name}: the version in use is ${notice.kind}`,
+      body: `${watched.path}: ${name} is still maintained; only the version in use is ${notice.kind}. ${notice.text} This is an upgrade, not a migration: do not raise it.`,
+    });
+  }
+  // With a source down, a notice never disappears (a missing answer is not a fix).
+  const nextUpgrades = partial ? [...new Set([...knownUpgrades, ...upgradeKeys])].sort() : upgradeKeys;
+
   const baseline = watched.snapshot === undefined;
   const next = mergeSnapshot(watched.snapshot, cur, partial);
   await deps.store.update((s) => {
@@ -221,6 +249,7 @@ async function scanOne(
     p.lastScanAt = now().toISOString();
     p.snapshot = next;
     p.notFound = notFoundKeys;
+    p.upgrades = nextUpgrades;
     p.report = report;
   });
 
@@ -229,6 +258,7 @@ async function scanOne(
     status: baseline ? 'baseline' : 'scanned',
     worsened: worsened.length,
     notFound: notFoundKeys.length,
+    upgrades: upgradeKeys.length,
     unavailable: report.unavailable.map((u) => u.source),
   };
 }

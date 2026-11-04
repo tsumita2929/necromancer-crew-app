@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { DependencyRef, Diagnosis, Successor } from '@necromancer/engine';
 import { z } from 'zod';
-import { NOT_FOUND_TEXT, advisoryList, basisInfo, describeSuccessor, isLowConfidence, movedNote } from './advice';
+import { NOT_FOUND_TEXT, advisoryList, basisInfo, describeSuccessor, isLowConfidence, movedNote, upgradeNotice, versionsNote } from './advice';
 import type { EnginePort } from './engine-port';
 import { buildGraveyard } from './graveyard';
 import { readManifests as defaultReadManifests, type ReadManifests } from './manifests';
@@ -63,17 +63,26 @@ const name = z
   })
   .describe('Package name as published (letters, digits and . _ ~ - only, with an optional @scope/).');
 
+const specInput = z
+  .string()
+  .max(200)
+  .optional()
+  .describe('Version range or pin as written, e.g. "3.0.1". Default: read from the project manifests.');
+
 const depInput = z.object({
   ecosystem,
   name,
   spec: z.string().max(200).optional().describe('Version range as written, e.g. "^2.88.0".'),
 });
 
-function toRef(d: z.infer<typeof depInput>): DependencyRef {
+const normName = (ecosystem: 'npm' | 'pypi', n: string) => (ecosystem === 'pypi' ? n.toLowerCase().replace(/[-_.]+/g, '-') : n);
+
+function toRef(d: z.infer<typeof depInput> & { resolved?: string }): DependencyRef {
   return {
     ecosystem: d.ecosystem,
-    name: d.ecosystem === 'pypi' ? d.name.toLowerCase().replace(/[-_.]+/g, '-') : d.name,
+    name: normName(d.ecosystem, d.name),
     spec: d.spec ?? '',
+    ...(d.resolved ? { resolved: d.resolved } : {}),
     direct: true,
     scope: 'main',
     declaredIn: 'tool-input',
@@ -85,6 +94,7 @@ export { basisInfo };
 /** What every answer about one dependency says first: verdict, basis, not-found, advisories, moved. */
 function summarize(d: Diagnosis) {
   const moved = movedNote(d);
+  const upgrade = upgradeNotice(d);
   return {
     name: d.dependency.name,
     verdict: d.verdict,
@@ -93,6 +103,7 @@ function summarize(d: Diagnosis) {
     basis: basisInfo(d),
     advisories: advisoryList(d),
     ...(moved ? { moved } : {}),
+    ...(upgrade ? { upgrade, nothingToMigrate: 'Only the version in use is deprecated or yanked. Upgrade it; do not migrate or raise the package.' } : {}),
     successors: d.successors.map(describeSuccessor),
   };
 }
@@ -103,7 +114,7 @@ export function createToolServer(deps: ToolDeps): McpServer {
   const server = new McpServer({ name: 'necromancer', version: '0.1.0' });
   const tag = { engine: engine.name, ...(engine.note ? { note: engine.note } : {}) };
 
-  async function diagnoseOne(d: z.infer<typeof depInput>): Promise<Diagnosis> {
+  async function diagnoseOne(d: z.infer<typeof depInput> & { resolved?: string }): Promise<Diagnosis> {
     const [diagnosis] = await engine.engine.diagnose([toRef(d)]);
     if (!diagnosis) throw new ToolInputError('The engine returned no diagnosis.');
     return diagnosis;
@@ -163,7 +174,7 @@ export function createToolServer(deps: ToolDeps): McpServer {
     'diagnose',
     {
       description:
-        'Give verdicts and evidence for specific dependencies, without a project. "summaries" has one short entry per dependency (verdict, notFound, advisories with their other ids, a moved-repository note, ways out); "diagnoses" has the full engine records. A dependency with notFound=true is unknown to its registry (removed, private or misspelled), which is not the same as alive.',
+        'Give verdicts and evidence for specific dependencies, without a project. "summaries" has one short entry per dependency (verdict, notFound, advisories with their other ids, a moved-repository note, ways out); "diagnoses" has the full engine records. A dependency with notFound=true is unknown to its registry (removed, private or misspelled), which is not the same as alive. A living package whose version in use is deprecated or yanked has verdict alive and an "upgrade" entry ("Upgrade to <version>"): tell the person to upgrade; it is never dying and never migrated.',
       inputSchema: { dependencies: z.array(depInput).min(1).max(200) },
       annotations: { readOnlyHint: true },
     },
@@ -196,6 +207,7 @@ export function createToolServer(deps: ToolDeps): McpServer {
         basis: sum.basis,
         advisories: sum.advisories,
         ...(sum.moved ? { moved: sum.moved } : {}),
+        ...(sum.upgrade ? { upgrade: sum.upgrade, nothingToMigrate: sum.nothingToMigrate } : {}),
         successors: sum.successors,
         ...(d.successors.length > 0 && low === d.successors.length
           ? { note: 'Every way out is low confidence. Show them to the person as suggestions and ask which one, if any, to use.' }
@@ -215,7 +227,12 @@ export function createToolServer(deps: ToolDeps): McpServer {
       );
     }
     if (d.verdict === 'alive') {
-      throw new ToolInputError(`${args.name} is alive; there is nothing to resurrect.`);
+      const up = upgradeNotice(d);
+      throw new ToolInputError(
+        up
+          ? `${args.name} is alive: the package is maintained and only the version in use is ${up.kind}. ${up.text} There is nothing to migrate; tell the person to upgrade, and do not raise it.`
+          : `${args.name} is alive; there is nothing to resurrect.`,
+      );
     }
     const names = d.successors.map((s) => s.name);
     let chosen =
@@ -243,6 +260,37 @@ export function createToolServer(deps: ToolDeps): McpServer {
       );
     }
     return chosen;
+  }
+
+  /**
+   * The version the project uses, read from its manifests: the declared range and the lockfile version.
+   * The séance's version note compares the version in use with the versions the recipe was run against.
+   */
+  async function projectVersion(dir: string, target: { ecosystem: 'npm' | 'pypi'; name: string }) {
+    try {
+      const project = await resolveProjectDir(dir);
+      const read = await readManifests(project.real);
+      const want = normName(target.ecosystem, target.name);
+      const found: DependencyRef[] = [];
+      for (const file of read.files) {
+        for (const dep of engine.engine.parseManifest(file).dependencies) {
+          if (dep.ecosystem === target.ecosystem && dep.name === want) found.push(dep);
+        }
+      }
+      const locked = found.filter((x) => x.resolved);
+      const resolved = (locked.find((x) => x.direct) ?? (locked.length === 1 ? locked[0] : undefined))?.resolved;
+      const spec = found.find((x) => x.direct && x.spec)?.spec ?? found.find((x) => x.spec)?.spec;
+      return { ...(spec ? { spec } : {}), ...(resolved ? { resolved } : {}) };
+    } catch {
+      return {};
+    }
+  }
+
+  /** A version the caller names beats the manifests (and then no lockfile version is used). */
+  function withVersion(used: { spec?: string; resolved?: string }, args: { ecosystem: 'npm' | 'pypi'; name: string; spec?: string }) {
+    return args.spec !== undefined
+      ? { ecosystem: args.ecosystem, name: args.name, spec: args.spec }
+      : { ecosystem: args.ecosystem, name: args.name, ...used };
   }
 
   /** Scan a project directory for how it uses one dependency. Needs an engine that can scan. */
@@ -283,17 +331,19 @@ export function createToolServer(deps: ToolDeps): McpServer {
     'resurrection_spec',
     {
       description:
-        'Write the three Kiro spec files (requirements, design, tasks) for moving a project off one dead dependency. The successor must be one that "successors" lists; the default is the best one. With no successor known it writes a raise spec. Give "path" (the project directory) to scan how the project uses the dependency; the spec then describes the project\'s real calls and the generated séance. A package the registry does not know (notFound) is refused. When the chosen way out has needsConfirmation=true (low confidence), ask the person before you migrate.',
+        'Write the three Kiro spec files (requirements, design, tasks) for moving a project off one dead dependency. The successor must be one that "successors" lists; the default is the best one. With no successor known it writes a raise spec. Give "path" (the project directory) to scan how the project uses the dependency; the spec then describes the project\'s real calls and the generated séance. A package the registry does not know (notFound) is refused, and so is a living package with only a deprecated or yanked version (upgrade it instead). When the chosen way out has needsConfirmation=true (low confidence), ask the person before you migrate.',
       inputSchema: {
         ecosystem,
         name,
         successor: z.string().min(1).optional().describe('Successor name from the successors tool.'),
         path: z.string().min(1).optional().describe('Absolute path of the project, to scan its usage.'),
+        spec: specInput,
       },
       annotations: { readOnlyHint: true },
     },
-    guard(async (args: { ecosystem: 'npm' | 'pypi'; name: string; successor?: string; path?: string }) => {
-      const d = await diagnoseOne(args);
+    guard(async (args: { ecosystem: 'npm' | 'pypi'; name: string; successor?: string; path?: string; spec?: string }) => {
+      const used = args.path !== undefined ? await projectVersion(args.path, args) : {};
+      const d = await diagnoseOne(withVersion(used, args));
       const chosen = chooseSuccessor(d, args);
       const confirm = confirmation(d, chosen, args.successor !== undefined);
       const common = {
@@ -301,6 +351,7 @@ export function createToolServer(deps: ToolDeps): McpServer {
         basis: basisInfo(d),
         advisories: advisoryList(d),
         ...(movedNote(d) ? { moved: movedNote(d) } : {}),
+        ...(Object.keys(used).length > 0 ? { versionRead: used } : {}),
         successor: describeSuccessor(chosen),
         needsConfirmation: confirm.needsConfirmation,
         notes: confirm.notes,
@@ -320,6 +371,7 @@ export function createToolServer(deps: ToolDeps): McpServer {
   );
 
   type SeanceArgs = {
+    spec?: string;
     ecosystem: 'npm' | 'pypi';
     name: string;
     path: string;
@@ -334,11 +386,13 @@ export function createToolServer(deps: ToolDeps): McpServer {
     path: z.string().min(1).describe('Absolute path of the project directory.'),
     successor: z.string().min(1).optional().describe('Successor name; default the best listed one, or raise.'),
     importNames: z.array(z.string().min(1).max(100)).max(10).optional().describe('Python import names when they differ from the distribution name.'),
+    spec: specInput,
   };
 
   /** Scan, choose, generate. Writes nothing. Shared by the preview and the write tool. */
   async function prepareSeance(args: SeanceArgs) {
-    const d = await diagnoseOne(args);
+    const used = await projectVersion(args.path, args);
+    const d = await diagnoseOne(withVersion(used, args));
     const chosen = chooseSuccessor(d, args);
     const confirm = confirmation(d, chosen, args.successor !== undefined);
     const { root, sources, usage } = await scanProject(args.path, {
@@ -366,6 +420,10 @@ export function createToolServer(deps: ToolDeps): McpServer {
         'The generated séance runs under Vitest, which needs Node 22.12 or newer. If the project supports older Node, say so in the report. If the project runs tests with node --test, keep the Vitest file out of that run (for example "test": "node --test test/*.test.js") and add a separate script ("seance": "vitest run seance").',
       );
     }
+    const versions = versionsNote(bundle.oldVersions);
+    if (versions && versions.tellThePerson) {
+      notes.push(`Versions: ${versions.note} Tell the person the version in use was not tested.`);
+    }
     const moved = movedNote(d);
     const base = {
       ...tag,
@@ -376,6 +434,7 @@ export function createToolServer(deps: ToolDeps): McpServer {
       ...(moved ? { moved } : {}),
       successor: describeSuccessor(chosen),
       needsConfirmation: confirm.needsConfirmation,
+      ...(versions ? { versions, versionNotTested: versions.tellThePerson } : {}),
       language: bundle.language,
       recipe: bundle.recipe,
       template: generic ? 'generic' : 'curated',
@@ -396,7 +455,7 @@ export function createToolServer(deps: ToolDeps): McpServer {
     'seance',
     {
       description:
-        'PREVIEW of the séance for moving a project off one dead dependency. Read-only: it scans the project at "path" and returns the files, the install and run commands, what they compare and the known differences, and it never writes anything. It is a differential property-based test that asks the old package and its replacement the same generated questions, using the project\'s own calls as examples; a curated recipe is used when one exists, else a generic template whose comparisons stay skipped until the replacement sets READY. To put the files into the project, call seance_write on a resurrect/<dependency> branch. If the answer has needsConfirmation=true (a low-confidence way out), ask the person first. A package the registry does not know (notFound) is refused.',
+        'PREVIEW of the séance for moving a project off one dead dependency. Read-only: it scans the project at "path" and returns the files, the install and run commands, what they compare and the known differences, and it never writes anything. It is a differential property-based test that asks the old package and its replacement the same generated questions, using the project\'s own calls as examples; a curated recipe is used when one exists, else a generic template whose comparisons stay skipped until the replacement sets READY. To put the files into the project, call seance_write on a resurrect/<dependency> branch. If the answer has needsConfirmation=true (a low-confidence way out), ask the person first. If it has versionNotTested=true, the version in use is outside the versions the recipe was run against (see "versions"): tell the person. A package the registry does not know (notFound) is refused.',
       inputSchema: seanceShape,
       annotations: { readOnlyHint: true },
     },
@@ -410,7 +469,7 @@ export function createToolServer(deps: ToolDeps): McpServer {
     'seance_write',
     {
       description:
-        'WRITE the séance files into the project. Only while the project is on a git branch named resurrect/<dependency>; never over a file that differs; never outside the project. Use "seance" first to preview. A low-confidence way out is refused unless the person agreed and you pass acceptLowConfidence=true. A package the registry does not know (notFound) is refused.',
+        'WRITE the séance files into the project. Only while the project is on a git branch named resurrect/<dependency>; never over a file that differs; never outside the project. Use "seance" first to preview. A low-confidence way out is refused unless the person agreed and you pass acceptLowConfidence=true. A package the registry does not know (notFound) is refused. The answer has the same "versions" note as the preview.',
       inputSchema: {
         ...seanceShape,
         acceptLowConfidence: z
